@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addLibrary(.{
         .name = "lola",
         .root_module = exe_mod,
-        .linkage = .static,
+        .linkage = .dynamic,
     });
 
     b.installArtifact(exe);
