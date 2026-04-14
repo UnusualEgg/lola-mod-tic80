@@ -59,7 +59,7 @@ export const ScriptConfig: tic_core.TicScript = .{
     .id = 100,
     .name = "lola",
     .file_ext = "lola",
-    .project_comment = "lola",
+    .project_comment = "//",
 
     .unlabeled = .{
         .init = tic_init,
@@ -97,7 +97,7 @@ export const ScriptConfig: tic_core.TicScript = .{
     .api_keywords_count = 0,
     .api_keywords = &.{},
 
-    .demo = .{},
+    .demo = demo,
     .mark = .{ .name = "mark" },
 };
 const keywords = [_][*:0]const u8{
@@ -119,10 +119,9 @@ const keywords = [_][*:0]const u8{
 const TicMem = tic_core.TicMem;
 const TicCore = tic_core.TicCore;
 var demos = [_:null]?tic_core.TicDemo{demo};
-const demo_code = @embedFile("hello.lola");
+const demo_code = @embedFile("lola.tic.gz");
 const demo: tic_core.TicDemo = .{
     .data = demo_code,
-    .name = "hello",
     .size = demo_code.len,
 };
 
