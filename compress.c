@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
     fclose(f);
     return 1;
   }
-  printf("cart %s is %d bytes\n", argv[1], (int)read_size);
+  printf("cart %s is %zu bytes\n", argv[1], read_size);
   fclose(f);
 
   if (argc > 2) {
@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
     }
 
     size_t wrote = fwrite(zip_data, 1, zip_size, f);
-    printf("wrote %d bytes\n", (int)wrote);
+    printf("wrote %zu bytes\n", wrote);
   } else {
 
     size_t zip_size =
@@ -75,8 +75,8 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    size_t wrote = fwrite(zip_data, zip_size, 1, f);
-    printf("wrote %d bytes\n", (int)wrote);
+    size_t wrote = fwrite(zip_data, 1, zip_size, f);
+    printf("wrote %zu bytes\n", wrote);
   }
 
   fclose(f);
