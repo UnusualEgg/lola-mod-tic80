@@ -59,9 +59,9 @@ const TicOutlineItem = extern struct {
 const TIC80_SampleType = i16;
 const Tic80 = extern struct {
     callback: extern struct {
-        trace: *const fn (text: [*:0]const u8, color: u8) void,
-        @"error": *const fn (info: [*:0]const u8) void,
-        exit: *const fn () void,
+        trace: *const fn (text: [*:0]const u8, color: u8) callconv(.c) void,
+        @"error": *const fn (info: [*:0]const u8) callconv(.c) void,
+        exit: *const fn () callconv(.c) void,
     },
 
     samples: extern struct {
@@ -71,16 +71,329 @@ const Tic80 = extern struct {
 
     screen: [*]u32,
 };
-const TicRam = extern struct {
-    tic: extern struct {
-        // vram
+// const TicRam = extern struct {
+//     tic: extern struct {
+//         // vram
+//     },
+// };
+const builtin = @import("builtin");
+const endian = builtin.cpu.arch.endian();
+const TileData = extern struct { data: [32]u8 };
+
+const TicTiles = extern struct { data: [256]TileData };
+const TicSprites = TicTiles;
+
+const TicMap = extern struct { data: [32640]u8 };
+
+const TicWaveForm = extern struct { data: [16]u8 };
+const TicWaveFroms = extern struct { data: [16]TicWaveForm };
+
+const TicSample = extern struct {
+    data: [30]extern struct {
+        _1: u8,
+        _2: u8,
+    },
+    data2: extern struct {
+        _1: u8,
+        _2: u8,
+    },
+    loops: [4]u8,
+};
+
+const TicSamples = extern struct { data: [64]TicSample };
+const TicSfx = extern struct {
+    waveforms: TicWaveFroms,
+    samples: TicSamples,
+};
+
+const TicTrackPattern = extern struct { data: [64][3]u8 };
+const TicPatterns = extern struct { data: [60]TicTrackPattern };
+
+const TicTrack = extern struct {
+    data: [48]u8,
+
+    tenpo: i8,
+    rows: u8,
+    speed: i8,
+};
+const TicTracks = extern struct { data: [8]TicTrack };
+
+const TicMusic = extern struct {
+    patterns: TicPatterns,
+    tracks: TicTracks,
+};
+
+const TicFlags = extern struct { data: [512]u8 };
+
+const TicRgb = extern struct { r: u8, g: u8, b: u8 };
+
+const TicPalette = [16]TicRgb;
+
+const TicPalettes = extern struct {
+    vbank0: TicPalette,
+    vbank1: TicPalette,
+};
+
+const TicBank = extern struct {
+    screen: TicScreen,
+    tiles: TicTiles,
+    sprites: TicSprites,
+    map: TicMap,
+    sfx: TicSfx,
+    music: TicMusic,
+    flags: TicFlags,
+    palettes: TicPalettes,
+};
+
+const TicScreen = extern struct { data: [16320]u8 };
+const TicCode = extern struct { data: [524288]c_char };
+const TicBinary = extern struct { data: [262144]c_char, size: u32 };
+const Cartridge = extern struct {
+    banks: [8]TicBank,
+    code: TicCode,
+    binary: TicBinary,
+    lang: u8,
+};
+const TicRam = extern struct { data: [0x18000]u8 };
+const TicMem = extern struct {
+    product: Tic80,
+    ram: *TicRam,
+    cart: Cartridge,
+    base_ram: *TicRam,
+    save_id: [64]c_char,
+    input: u8,
+};
+// const TicMem = opaque {};
+const TicBlip = opaque {};
+const TicTickData = extern struct {
+    trace: *const fn (Data, [*:0]const u8, color: u8) callconv(.c) void,
+    @"error": *const fn (Data, [*:0]const u8) callconv(.c) void,
+    exit: *const fn (Data) callconv(.c) void,
+
+    counter: *const fn (Data) callconv(.c) u64,
+    freq: *const fn (Data) callconv(.c) u64,
+    start: u64,
+
+    data: Data,
+    const Data = ?*anyopaque;
+};
+const Tic80Gamepad = u8;
+const Tic80Gamepads = u32;
+
+const Tic80Keyboard = u32;
+
+const TicSoundRegisterData = extern struct {
+    time: i32,
+    phase: i32,
+    amp: i32,
+};
+
+const SoundRegisterData = extern struct {
+    data: [4]TicSoundRegisterData,
+    pcm: TicSoundRegisterData,
+};
+const TicSteroVolume = u32;
+const TicPcm = extern struct {
+    data: [128]u8,
+};
+const TicChannelData = extern struct {
+    tick: i32,
+    pos: *[4]u8,
+    index: i32,
+    note: i32,
+    volume: u8,
+    speed: u8, //technically u3
+    duration: i32,
+};
+const TicCommandData = extern struct {
+    chord: extern struct {
+        tick: i32,
+        data: packed struct(u8) {
+            note1: u4,
+            note2: u4,
+        },
+    },
+    vibrato: extern struct {
+        tick: i32,
+        data: packed struct(u8) {
+            period: u4,
+            depth: u4,
+        },
+    },
+    slide: extern struct {
+        tick: i32,
+        note: u8,
+        duration: i32,
+    },
+    finepintch: extern struct { value: i32 },
+    delay: extern struct {
+        row: *anyopaque,
+        ticks: i32,
     },
 };
-// const TicMem = extern struct {
-//     product: Tic80,
+const TicSfxPos = extern struct { data: [4]i8 };
+const TicJumpCommand = extern struct {
+    active: bool,
+    frame: i32,
+    beat: i32,
+};
+const TicVram = extern struct { data: [0x4000]u8 };
+const TicSoundRegister = extern struct {
+    freq_low: u8,
+    freq_high_volume: u8,
+    waveform: TicWaveForm,
+};
+const TicCoreStateData = extern struct {
+    gamepads: extern struct {
+        previous: Tic80Gamepads,
+        now: Tic80Gamepads,
 
-// };
-const TicMem = opaque {};
+        holds: [32]u32,
+    },
+    keyboard: extern struct {
+        previous: Tic80Keyboard,
+        now: Tic80Keyboard,
+
+        holds: [95]u32,
+    },
+    registers: extern struct {
+        left: SoundRegisterData,
+        right: SoundRegisterData,
+    },
+    sound_ringbuf: [12]extern struct {
+        registers: [4]TicSoundRegister,
+        stero: TicSteroVolume,
+        pcm: TicPcm,
+    },
+    sound_ringbuf_head: u32,
+    sound_ringbuf_tail: u32,
+
+    sfx: extern struct {
+        channels: [4]TicChannelData,
+    },
+
+    music: extern struct {
+        ticks: i32,
+        channels: [4]TicChannelData,
+        commands: [4]TicCommandData,
+        sfxpos: [4]TicSfxPos,
+        jump: TicJumpCommand,
+        tempo: i32,
+        speed: i32,
+    },
+    tick: *const fn (*TicMem) callconv(.c) void,
+    callback: TicBlitCallBack,
+    synced: u32,
+
+    vbank: extern struct {
+        id: i32,
+        mem: TicVram,
+    },
+    clip: extern struct { l: i32, t: i32, r: i32, b: i32 },
+    initialized: bool,
+};
+const TicFlip = enum(c_int) {
+    no_flip = 0,
+    horz_flip = 1,
+    vert_flip = 2,
+};
+const TicRotate = enum(c_int) {
+    no_rotate,
+    @"90_rotate",
+    @"180_rotate",
+    @"270_rotate",
+};
+const TicTextureSrc = enum(c_int) {
+    tic_tiles_texture,
+    tic_map_texture,
+    tic_vbank_texture,
+};
+const RemapeResult = extern struct {
+    index: u8,
+    flip: TicFlip,
+    rotate: TicRotate,
+};
+const remapFunc = *const fn (data: *anyopaque, x: i32, y: i32, result: *RemapeResult) callconv(.c) void;
+const TicPoint = extern struct { x: i32, y: i32 };
+const TicKey = u8;
+const API = extern struct {
+    print: *const fn (*TicMem, [*:0]const u8, i32, i32, u8, bool, i32, bool) callconv(.c) i32,
+    cls: *const fn (*TicMem, u8) callconv(.c) void,
+    pix: *const fn (*TicMem, i32, i32, u8, bool) callconv(.c) u8,
+    line: *const fn (*TicMem, f32, f32, f32, f32, u8) callconv(.c) void,
+    rect: *const fn (*TicMem, i32, i32, i32, i32, u8) callconv(.c) void,
+    rectb: *const fn (*TicMem, i32, i32, i32, i32, u8) callconv(.c) void,
+    spr: *const fn (*TicMem, i32, i32, i32, i32, i32, [*c]u8, u8, i32, TicFlip, TicRotate) callconv(.c) void,
+    btn: *const fn (*TicMem, i32) callconv(.c) u32,
+    btnp: *const fn (*TicMem, i32, i32, i32) callconv(.c) u32,
+    sfx: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, i32, i32) callconv(.c) void,
+    map: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, [*c]u8, u8, i32, remapFunc, ?*anyopaque) callconv(.c) void,
+    mget: *const fn (*TicMem, i32, i32) callconv(.c) u8,
+    mset: *const fn (*TicMem, i32, i32, u8) callconv(.c) void,
+    peek: *const fn (*TicMem, i32, i32) callconv(.c) u8,
+    poke: *const fn (*TicMem, i32, u8, i32) callconv(.c) void,
+    peek1: *const fn (*TicMem, i32) callconv(.c) u8,
+    poke1: *const fn (*TicMem, i32, u8) callconv(.c) void,
+    peek2: *const fn (*TicMem, i32) callconv(.c) u8,
+    poke2: *const fn (*TicMem, i32, u8) callconv(.c) void,
+    peek4: *const fn (*TicMem, i32) callconv(.c) u8,
+    poke4: *const fn (*TicMem, i32, u8) callconv(.c) void,
+    memcpy: *const fn (*TicMem, i32, i32, i32) callconv(.c) void,
+    memset: *const fn (*TicMem, i32, u8, i32) callconv(.c) void,
+    trace: *const fn (*TicMem, [*:0]const u8, u8) callconv(.c) void,
+    pmem: *const fn (*TicMem, i32, u32, bool) callconv(.c) u32,
+    time: *const fn (*TicMem) callconv(.c) f64,
+    tstamp: *const fn (*TicMem) callconv(.c) i32,
+    exit: *const fn (*TicMem) callconv(.c) void,
+    font: *const fn (*TicMem, [*:0]const u8, i32, i32, [*c]u8, u8, i32, i32, bool, i32, bool) callconv(.c) i32,
+    mouse: *const fn (*TicMem) callconv(.c) TicPoint,
+    circ: *const fn (*TicMem, i32, i32, i32, u8) callconv(.c) void,
+    circb: *const fn (*TicMem, i32, i32, i32, u8) callconv(.c) void,
+    elli: *const fn (*TicMem, i32, i32, i32, i32, u8) callconv(.c) void,
+    ellib: *const fn (*TicMem, i32, i32, i32, i32, u8) callconv(.c) void,
+    paint: *const fn (*TicMem, i32, i32, u8, u8) callconv(.c) void,
+    tri: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, u8) callconv(.c) void,
+    trib: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, u8) callconv(.c) void,
+    ttri: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, TicTextureSrc, [*c]u8, i32, f32, f32, f32, bool) callconv(.c) void,
+    clip: *const fn (*TicMem, i32, i32, i32, i32) callconv(.c) void,
+    music: *const fn (*TicMem, i32, i32, i32, bool, bool, i32, i32) callconv(.c) void,
+    sync: *const fn (*TicMem, u32, i32, bool) callconv(.c) void,
+    vbank: *const fn (*TicMem, i32) callconv(.c) i32,
+    reset: *const fn (*TicMem) callconv(.c) void,
+    key: *const fn (*TicMem, TicKey) callconv(.c) bool,
+    keyp: *const fn (*TicMem, TicKey, i32, i32) callconv(.c) bool,
+    fget: *const fn (*TicMem, i32, u8) callconv(.c) bool,
+    fset: *const fn (*TicMem, i32, u8, bool) callconv(.c) void,
+    fft: *const fn (*TicMem, i32, i32) callconv(.c) f64,
+    ffts: *const fn (*TicMem, i32, i32) callconv(.c) f64,
+};
+const TicCore = extern struct {
+    memory: TicMem,
+    screen_format: c_int, //at least u32 i think
+
+    current_vm: *anyopaque,
+    current_script: *TicScript,
+
+    blip: extern struct {
+        left: *TicBlip,
+        right: *TicBlip,
+    },
+    samplerate: i32,
+    data: *TicTickData,
+    state: TicCoreStateData,
+    pause: extern struct {
+        state: TicCoreStateData,
+        ram: TicRam,
+        input: u8,
+        time: extern struct {
+            start: u64,
+            paused: u64,
+        },
+    },
+
+    api: API,
+};
+
 const TicDemo = extern struct {
     data: ?[*]const u8 = null,
     size: i32 = 0,
@@ -131,7 +444,7 @@ const TicScript = extern struct {
 
     demo: TicDemo,
     mark: TicDemo,
-    demos: ?*TicDemo = null,
+    demos: ?[*]TicDemo = null,
 };
 export const ScriptConfig: TicScript = .{
     .id = 100,
@@ -142,7 +455,7 @@ export const ScriptConfig: TicScript = .{
     .unlabeled = .{
         .init = tic_init,
         .close = tic_close,
-        .tick = tic_close,
+        .tick = tic_tick,
         .boot = tic_close,
         .blit = .{
             .data = null,
@@ -155,13 +468,13 @@ export const ScriptConfig: TicScript = .{
     .get_outline = tic_get_outline,
     .eval = tic_eval,
 
-    .block_comment_start = "",
-    .block_comment_end = "",
-    .block_comment_start2 = "",
-    .block_comment_end2 = "",
-    .block_string_start = "",
-    .block_string_end = "",
-    .std_string_start_end = "",
+    .block_comment_start = null,
+    .block_comment_end = null,
+    .block_comment_start2 = null,
+    .block_comment_end2 = null,
+    .block_string_start = null,
+    .block_string_end = null,
+    .std_string_start_end = "\"\"",
     .single_comment = "//",
     .block_end = "",
 
@@ -175,9 +488,8 @@ export const ScriptConfig: TicScript = .{
     .api_keywords_count = 0,
     .api_keywords = &.{},
 
-    .demo = .{ .name = "blank" },
+    .demo = .{},
     .mark = .{ .name = "mark" },
-    .demos = @ptrFromInt(0),
 };
 var demos = [_:null]?TicDemo{demo};
 const demo_code = @embedFile("hello.lola");
@@ -186,13 +498,21 @@ const demo: TicDemo = .{
     .name = "hello",
     .size = demo_code.len,
 };
+
 fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
     _ = .{ memory, code };
-    std.log.err("Hello From lola", .{});
+    const core: *TicCore = @ptrCast(memory);
+    core.data.trace(core.data.data, "Hello from lola!", 15);
+    core.api.trace(memory, "Hello from api :3", 15);
+    //TODO compile and save state here in core.currentVM
     return true;
 }
 fn tic_close(memory: *TicMem) callconv(.c) void {
     _ = .{memory};
+}
+fn tic_tick(memory: *TicMem) callconv(.c) void {
+    const core: *TicCore = @ptrCast(memory);
+    core.api.exit(memory);
 }
 fn tic_blit(memory: *TicMem, row: i32, data: UserData) callconv(.c) void {
     _ = .{ memory, row, data };
