@@ -13,6 +13,8 @@
 // (yes even the original has this exact comment, be careful)
 
 const std = @import("std");
+const tic_core = @import("tic.zig");
+const API = tic_core.API;
 comptime {
     std.testing.refAllDecls(@This());
 }
@@ -175,17 +177,17 @@ pub const key = raw.key;
 // TODO: nicer API?
 pub const keyp = raw.keyp;
 pub const held = raw.btnp;
-
-pub fn pressed(id: i32) bool {
-    return raw.btnp(id, -1, -1);
+const TicMem = tic_core.TicMem;
+pub fn pressed(api: API, mem: *TicMem, id: i32) bool {
+    return api.btnp(mem, id, -1, -1);
 }
 
-pub fn btn(id: i32) bool {
-    return raw.btn(id) != 0;
+pub fn btn(api: API, mem: *TicMem, id: i32) bool {
+    return api.btn(mem, id) != 0;
 }
 
-pub fn anybtn() bool {
-    return raw.btn(-1) != 0;
+pub fn anybtn(api: API, mem: *TicMem) bool {
+    return api.btn(mem, -1) != 0;
 }
 
 // -----------------
@@ -195,17 +197,39 @@ pub const clip = raw.clip;
 pub fn noclip() void {
     raw.clip(0, 0, WIDTH, HEIGHT);
 }
-pub const cls = raw.cls;
-pub const circ = raw.circ;
-pub const circb = raw.circb;
-pub const elli = raw.elli;
-pub const ellib = raw.ellib;
-pub const fget = raw.fget;
-pub const fset = raw.fset;
-pub const line = raw.line;
-pub const mset = raw.mset;
-pub const mget = raw.mget;
-pub const mouse = raw.mouse;
+pub fn cls(api: API, mem: *TicMem, color: u8) void {
+    api.cls(mem, color);
+}
+pub fn circ(api: API, mem: *TicMem, x: i32, y: i32, radius: i32, color: i32) void {
+    api.circ(mem, x, y, radius, color);
+}
+pub fn circb(api: API, mem: *TicMem, x: i32, y: i32, radius: i32, color: i32) void {
+    api.circb(mem, x, y, radius, color);
+}
+pub fn elli(api: API, mem: *TicMem, x: i32, y: i32, a: i32, b: i32, color: i32) void {
+    api.elli(mem, x, y, a, b, color);
+}
+pub fn ellib(api: API, mem: *TicMem, x: i32, y: i32, a: i32, b: i32, color: i32) void {
+    api.ellib(mem, x, y, a, b, color);
+}
+pub fn fget(api: API, mem: *TicMem, id: i32, flag: u8) bool {
+    return api.fget(mem, id, flag);
+}
+pub fn fset(api: API, mem: *TicMem, id: i32, flag: u8, value: bool) void {
+    api.fset(mem, id, flag, value);
+}
+pub fn line(api: API, mem: *TicMem, x0: i32, y0: i32, x1: i32, y1: i32, color: i32) void {
+    api.line(mem, x0, y0, x1, y1, color);
+}
+pub fn mset(api: API, mem: *TicMem, x: i32, y: i32, tile_id: u32) void {
+    api.mset(mem, x, y, tile_id);
+}
+pub fn mget(api: API, mem: *TicMem, x: i32, y: i32) u8 {
+    return api.mget(mem, x, y);
+}
+pub fn mouse(api: API, mem: *TicMem, data: *MouseData) tic_core.TicPoint {
+    return api.mouse(mem, data);
+}
 
 // map [x=0 y=0] [w=30 h=17] [sx=0 sy=0] [colorkey=-1] [scale=1] [remap=nil]
 // TODO: remap should be what????
@@ -233,22 +257,22 @@ fn remap_wrapper(data: ?*anyopaque, x: i32, y: i32, info: *RemapInfo) callconv(.
     const fun: *const fn (i32, i32, *RemapInfo) void = @ptrCast(data orelse return);
     fun(x, y, info);
 }
-pub fn map(args: MapArgs) void {
-    const color_count = @as(u8, @intCast(args.transparent.len));
-    const colors = args.transparent.ptr;
-    std.debug.assert(color_count < 16);
-    // why?
-    var remapinfo = .{ .index = undefined, .flip = undefined, .rotate = undefined };
-    const remap_args: ?RemapArgs = if (args.remap) |it| .{ .remap = &remap_wrapper, .data = @ptrCast(@constCast(it)), .res_ptr = &remapinfo } else null;
-    raw.map(args.x, args.y, args.w, args.h, args.sx, args.sy, colors, color_count, args.scale, if (remap_args) |it| &it else null);
+// pub fn map(args: MapArgs) void {
+//     const color_count = @as(u8, @intCast(args.transparent.len));
+//     const colors = args.transparent.ptr;
+//     std.debug.assert(color_count < 16);
+//     // why?
+//     var remapinfo = .{ .index = undefined, .flip = undefined, .rotate = undefined };
+//     const remap_args: ?RemapArgs = if (args.remap) |it| .{ .remap = &remap_wrapper, .data = @ptrCast(@constCast(it)), .res_ptr = &remapinfo } else null;
+//     raw.map(args.x, args.y, args.w, args.h, args.sx, args.sy, colors, color_count, args.scale, if (remap_args) |it| &it else null);
+// }
+
+pub fn pix(api: API, mem: *TicMem, x: i32, y: i32, color: u8) void {
+    api.pix(mem, x, y, color);
 }
 
-pub fn pix(x: i32, y: i32, color: u8) void {
-    raw.pix(x, y, color);
-}
-
-pub fn getpix(x: i32, y: i32) u8 {
-    raw.pix(x, y, -1);
+pub fn getpix(api: API, mem: *TicMem, x: i32, y: i32) u8 {
+    api.pix(mem, x, y, -1);
 }
 
 // pub extern fn spr(id: i32, x: i32, y: i32, trans_colors: [*]u8, color_count: i32, scale: i32, flip: i32, rotate: i32, w: i32, h: i32) void;
@@ -276,11 +300,11 @@ const SpriteArgs = struct {
     rotate: Rotate = Rotate.no,
 };
 
-pub fn spr(id: i32, x: i32, y: i32, args: SpriteArgs) void {
+pub fn spr(api: API, mem: *TicMem, id: i32, x: i32, y: i32, args: SpriteArgs) void {
     const color_count = @as(u8, @intCast(args.transparent.len));
     const colors = args.transparent.ptr;
     std.debug.assert(color_count < 16);
-    raw.spr(id, x, y, colors, color_count, args.scale, @intFromEnum(args.flip), @intFromEnum(args.rotate), args.w, args.h);
+    api.spr(mem, id, x, y, colors, color_count, args.scale, @intFromEnum(args.flip), @intFromEnum(args.rotate), args.w, args.h);
 }
 
 pub const rect = raw.rect;
@@ -297,10 +321,10 @@ const TextriArgs = struct {
     depth: bool = false,
 };
 
-pub fn ttri(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, @"u1": f32, v1: f32, @"u2": f32, v2: f32, @"u3": f32, v3: f32, args: TextriArgs) void {
+pub fn ttri(api: API, mem: *TicMem, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, @"u1": f32, v1: f32, @"u2": f32, v2: f32, @"u3": f32, v3: f32, args: TextriArgs) void {
     const color_count = @as(u8, @intCast(args.transparent.len));
     const trans_colors = args.transparent.ptr;
-    raw.ttri(x1, y1, x2, y2, x3, y3, @"u1", v1, @"u2", v2, @"u3", v3, @intFromEnum(args.texture_source), trans_colors, color_count, args.z1, args.z2, args.z3, args.depth);
+    api.ttri(mem, x1, y1, x2, y2, x3, y3, @"u1", v1, @"u2", v2, @"u3", v3, @intFromEnum(args.texture_source), trans_colors, color_count, args.z1, args.z2, args.z3, args.depth);
 }
 
 // ----
@@ -316,25 +340,25 @@ const PrintArgs = struct {
 const FontArgs = struct { transparent: []const u8 = &.{}, char_width: u8, char_height: u8, fixed: bool = false, scale: u8 = 1, alt: bool = false };
 
 /// Prints the text and returns the width of the text in pixels
-pub fn print(text: [*:0]const u8, x: i32, y: i32, args: PrintArgs) i32 {
-    return raw.print(text, x, y, args.color, args.fixed, args.scale, args.small_font);
+pub fn print(api: API, mem: *TicMem, text: [*:0]const u8, x: i32, y: i32, args: PrintArgs) i32 {
+    return api.print(mem, text, x, y, args.color, args.fixed, args.scale, args.small_font);
 }
 
 /// Prints the text using format and returns the width of the text in pixels
-pub fn printf(comptime fmt: []const u8, fmtargs: anytype, x: i32, y: i32, args: PrintArgs) i32 {
+pub fn printf(api: API, mem: *TicMem, comptime fmt: []const u8, fmtargs: anytype, x: i32, y: i32, args: PrintArgs) i32 {
     var buff: [MAX_STRING_SIZE:0]u8 = @splat(0);
     _ = std.fmt.bufPrintZ(&buff, fmt, fmtargs) catch {
-        trace("failed to printf!");
+        trace(api, mem, "failed to printf!");
     };
-    return raw.print(&buff, x, y, args.color, args.fixed, args.scale, args.small_font);
+    return api.print(mem, &buff, x, y, args.color, args.fixed, args.scale, args.small_font);
 }
 
-pub fn font(text: [:0]const u8, x: u32, y: i32, args: FontArgs) i32 {
+pub fn font(api: API, mem: *TicMem, text: [:0]const u8, x: u32, y: i32, args: FontArgs) i32 {
     const color_count = @as(u8, @intCast(args.transparent.len));
     const colors = args.transparent.ptr;
 
     const as_ptr: [*:0]const u8 = @as([*:0]const u8, @ptrCast(text));
-    return raw.font(as_ptr, x, y, colors, color_count, args.char_width, args.char_height, args.fixed, args.scale, args.alt);
+    return api.font(mem, as_ptr, x, y, colors, color_count, args.char_width, args.char_height, args.fixed, args.scale, args.alt);
 }
 
 // -----
@@ -350,8 +374,8 @@ const MusicArgs = struct {
     speed: i8 = -1,
 };
 
-pub fn music(track: i32, args: MusicArgs) void {
-    raw.music(track, args.frame, args.row, args.loop, args.sustain, args.tempo, args.speed);
+pub fn music(api: API, mem: *TicMem, track: i32, args: MusicArgs) void {
+    api.music(mem, track, args.frame, args.row, args.loop, args.sustain, args.tempo, args.speed);
 }
 
 pub fn nomusic() void {
@@ -400,20 +424,20 @@ fn parse_note(name: []const u8, noteArgs: *SfxArgs) bool {
     return false;
 }
 
-pub fn note(name: []const u8, args: SfxArgs) void {
+pub fn note(api: API, mem: *TicMem, name: []const u8, args: SfxArgs) void {
     var largs: SfxArgs = args;
     if (parse_note(name, &largs)) {
-        sfx(args.sfx, largs);
+        sfx(api, mem, args.sfx, largs);
     }
 }
 
-pub fn sfx(id: i32, args: SfxArgs) void {
+pub fn sfx(api: API, mem: *TicMem, id: i32, args: SfxArgs) void {
     var largs = args;
     if (args.volume != MAX_VOLUME) {
         largs.volumeLeft = args.volume;
         largs.volumeRight = args.volume;
     }
-    raw.sfx(id, args.note, args.octave, args.duration, args.channel, largs.volumeLeft, largs.volumeRight, args.speed);
+    api.sfx(mem, id, args.note, args.octave, args.duration, args.channel, largs.volumeLeft, largs.volumeRight, args.speed);
 }
 
 pub fn nosfx() void {
@@ -423,50 +447,54 @@ pub fn nosfx() void {
 // ------
 // MEMORY
 
-pub fn pmemset(index: u32, value: u32) void {
-    _ = raw.pmem(index, value);
+pub fn pmemset(api: API, mem: *TicMem, index: u32, value: u32) void {
+    _ = api.pmem(mem, index, value);
 }
 
-pub fn pmemget(index: u32) u32 {
-    return raw.pmem(index, -1);
+pub fn pmemget(api: API, mem: *TicMem, index: u32) u32 {
+    return api.pmem(mem, index, -1);
 }
 
-pub const memcpy = raw.memcpy;
-pub const memset = raw.memset;
+// pub const memcpy = raw.memcpy;
+// pub const memset = raw.memset;
 
-pub fn poke(addr: u32, value: u8) void {
-    raw.poke(addr, value, 8);
+// pub fn poke(addr: u32, value: u8) void {
+//     raw.poke(addr, value, 8);
+// }
+
+// pub const poke4 = raw.poke4;
+// pub const poke2 = raw.poke2;
+// pub const poke1 = raw.poke1;
+
+pub fn peek(api: API, mem: *TicMem, addr: u32) u8 {
+    return api.peek(mem, addr, 8);
 }
-
-pub const poke4 = raw.poke4;
-pub const poke2 = raw.poke2;
-pub const poke1 = raw.poke1;
-
-pub fn peek(addr: u32) u8 {
-    return raw.peek(addr, 8);
-}
-pub const peek4 = raw.peek4;
-pub const peek2 = raw.peek2;
-pub const peek1 = raw.peek1;
-pub const vbank = raw.vbank;
+// pub const peek4 = raw.peek4;
+// pub const peek2 = raw.peek2;
+// pub const peek1 = raw.peek1;
+// pub const vbank = raw.vbank;
 
 // SYSTEM
 
-pub const exit = raw.exit;
-pub const reset = raw.reset;
-pub fn trace(text: [:0]const u8) void {
-    raw.trace(text.ptr, 15);
+pub fn exit(api: API, mem: *TicMem) void {
+    api.exit(mem);
+}
+pub fn reset(api: API, mem: *TicMem) void {
+    api.reset(mem);
+}
+pub fn trace(api: API, mem: *TicMem, text: [:0]const u8) void {
+    api.trace(mem, text.ptr, 15);
 }
 
-pub fn tracef(comptime fmt: []const u8, fmtargs: anytype) void {
+pub fn tracef(api: API, mem: *TicMem, comptime fmt: []const u8, fmtargs: anytype) void {
     const Static = struct {
         var buf: [MAX_STRING_SIZE:0]u8 = @splat(0);
     };
     const slice = std.fmt.bufPrintZ(&Static.buf, fmt, fmtargs) catch {
-        trace("unable to print format");
+        api.trace(mem, "unable to print format", 15);
         return;
     };
-    trace(slice);
+    api.trace(mem, slice, 15);
 }
 
 const SectionFlags = packed struct {

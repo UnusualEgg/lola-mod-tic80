@@ -49,18 +49,6 @@ test "runtime.install" {
     try env.installModule(@This(), lola.runtime.Context.null_pointer);
 }
 
-pub fn exit(environment: *const lola.runtime.Environment, context: lola.runtime.Context, args: []const lola.runtime.value.Value) anyerror!lola.runtime.value.Value {
-    _ = environment;
-    _ = context;
-
-    if (args.len != 0)
-        return error.InvalidArgs;
-
-    const tic = @import("../tic80.zig");
-    tic.exit();
-    return .void;
-}
-
 pub fn CreateList(environment: *lola.runtime.Environment, context: lola.runtime.Context, args: []const lola.runtime.value.Value) anyerror!lola.runtime.value.Value {
     _ = context;
     if (args.len > 1)
