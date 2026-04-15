@@ -342,6 +342,12 @@ const trace_writer = struct {
         };
     }
 };
+//TODO call callback remap(tile,x,y) -> [tile,flip,rotate]
+// fn remapFunc(data: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
+//     if (state.err == null) {
+//         // state.callCallBack("remap");
+//     }
+// }
 
 /// returns true if it should continue to be ran
 fn run(api: tic_core.API, mem: *TicMem) !bool {
@@ -404,23 +410,25 @@ fn compile(core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     errdefer state.env.deinit();
     // try state.env.installModule(api, .null_pointer);
     try libs.tic.installWrapped(&core.memory, &state.env, &state.fn_data);
-    try state.installWrapped("cls", 0, .{@as(u8, 0)});
     try state.installWrapped("print", 1, .{ 0, 0, 15, false, 1, false });
-    try state.installWrapped("exit", 0, .{});
+
     try state.installWrapped("circ", 4, .{});
     try state.installWrapped("circb", 4, .{});
     try state.installWrapped("clip", 4, .{});
+    try state.installWrapped("cls", 0, .{@as(u8, 0)});
     try state.installWrapped("elli", 5, .{});
-    try state.installWrapped("exit", 5, .{});
+    try state.installWrapped("ellib", 5, .{});
+    try state.installWrapped("exit", 0, .{});
     try state.installWrapped("fft", 1, .{-1});
     try state.installWrapped("ffts", 1, .{-1});
     try state.installWrapped("fget", 2, .{});
     try state.installWrapped("fset", 3, .{});
-    //TODO font (similar to print with trans_colors)
+    try state.installWrapped("font", 6, .{ false, 1, false });
     try state.installWrapped("key", 0, .{0xff});
     try state.installWrapped("keyp", 0, .{ 0xff, -1, -1 });
     try state.installWrapped("line", 5, .{});
     //TODO the rest. refer to `tic_core.api`
+    // core.api.
 
     // lola.libs.std
     // if (opts.array)
