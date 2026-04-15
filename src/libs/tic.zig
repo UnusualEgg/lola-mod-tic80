@@ -34,6 +34,57 @@ pub fn installWrapped(mem: *TicMem, env: *Environment, func_data: *wrapper.FnDat
 }
 const regular = struct {
     const FnData = @import("../wrapper.zig").FnData;
+    fn maybeArg(args: []const Value, index: usize, T: type, default: T) error{ TypeMismatch, OutOfRange }!T {
+        return if (args.len > index) try args[index].toInteger(T) else default;
+    }
+    fn getTransColors(args: []const Value, data: *FnData, arg_index: usize) !struct { []const u8, bool } {
+        return if (args.len > arg_index) switch (args[arg_index]) {
+            .void => .{ &.{}, false },
+            .array => |array| colors: {
+                const colors = try data.alloc.alloc(u8, array.contents.len);
+                errdefer data.alloc.free(colors);
+                for (array.contents, colors) |value, *color| {
+                    color.* = try value.toInteger(u8);
+                }
+                break :colors .{ colors, true };
+            },
+            .number => .{ if (args[arg_index].number == -1) &.{} else (&try args[arg_index].toInteger(u8))[0..1], false },
+            else => error.TypeMismatch,
+        } else .{ &.{}, false };
+    }
+    pub fn btnp(
+        _: *Environment,
+        wrapped_context: Context,
+        args: []const Value,
+    ) !Value {
+        const data: *FnData = wrapped_context.cast(*FnData);
+        if (args.len < 1) return error.InvalidArgs;
+
+        const id = try args[0].toInteger(i32);
+        const hold = if (args.len > 1) try args[1].toInteger(i32) else -1;
+        const period = if (args.len > 2) try args[2].toInteger(i32) else -1;
+        return Value.initBoolean(api.btnp(data.mem, id, hold, period) != 0);
+    }
+    pub fn map(
+        _: *Environment,
+        wrapped_context: Context,
+        args: []const Value,
+    ) !Value {
+        const data: *FnData = wrapped_context.cast(*FnData);
+
+        const x = try maybeArg(args, 0, i32, 0);
+        const y = try maybeArg(args, 1, i32, 0);
+        const w = try maybeArg(args, 2, i32, 30);
+        const h = try maybeArg(args, 3, i32, 17);
+        const sx = try maybeArg(args, 4, i32, 0);
+        const sy = try maybeArg(args, 5, i32, 0);
+        const trans_colors: []const u8, const should_free: bool = getTransColors(args, data, 6);
+        defer if (should_free) data.alloc.free(trans_colors);
+        const scale = try maybeArg(args, 7, i32, 1);
+
+        api.map(data.mem, x, y, w, h, sx, sy, trans_colors.ptr, @intCast(trans_colors.len), scale, data.remap_func, data.remap_data);
+    }
+
     pub fn spr(
         _: *Environment,
         wrapped_context: Context,
@@ -45,19 +96,7 @@ const regular = struct {
         const id = try args[0].toInteger(i32);
         const x = try args[1].toInteger(i32);
         const y = try args[2].toInteger(i32);
-        const trans_colors: []const u8, const should_free: bool = if (args.len > 3) switch (args[3]) {
-            .void => .{ &.{}, false },
-            .array => |array| colors: {
-                const colors = try data.alloc.alloc(u8, array.contents.len);
-                errdefer data.alloc.free(colors);
-                for (array.contents, colors) |value, *color| {
-                    color.* = try value.toInteger(u8);
-                }
-                break :colors .{ colors, true };
-            },
-            .number => .{ (&try args[3].toInteger(u8))[0..1], false },
-            else => return error.TypeMismatch,
-        } else .{ &.{}, false };
+        const trans_colors: []const u8, const should_free: bool = getTransColors(args, data, 3);
         defer if (should_free) data.alloc.free(trans_colors);
         const scale: i32 = if (args.len > 4) try args[4].toInteger(i32) else 1;
         const flip: tic_core.TicFlip = if (args.len > 5)
