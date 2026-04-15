@@ -259,7 +259,7 @@ pub const RemapeResult = extern struct {
     flip: TicFlip,
     rotate: TicRotate,
 };
-pub const remapFunc = *const fn (data: *anyopaque, x: i32, y: i32, result: *RemapeResult) callconv(.c) void;
+pub const RemapFunc = *const fn (data: ?*anyopaque, x: i32, y: i32, result: *RemapeResult) callconv(.c) void;
 pub const TicPoint = extern struct { x: i32, y: i32 };
 pub const TicKey = u8;
 
@@ -329,7 +329,7 @@ pub const API = extern struct {
     btn: *const fn (*TicMem, i32) callconv(.c) u32,
     btnp: *const fn (*TicMem, i32, i32, i32) callconv(.c) u32,
     sfx: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, i32, i32) callconv(.c) void,
-    map: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, [*c]u8, u8, i32, remapFunc, ?*anyopaque) callconv(.c) void,
+    map: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, [*]const u8, u8, i32, RemapFunc, ?*anyopaque) callconv(.c) void,
     mget: *const fn (*TicMem, i32, i32) callconv(.c) u8,
     mset: *const fn (*TicMem, i32, i32, u8) callconv(.c) void,
     peek: *const fn (*TicMem, i32, i32) callconv(.c) u8,
@@ -347,7 +347,7 @@ pub const API = extern struct {
     time: *const fn (*TicMem) callconv(.c) f64,
     tstamp: *const fn (*TicMem) callconv(.c) i32,
     exit: *const fn (*TicMem) callconv(.c) void,
-    font: *const fn (*TicMem, [*:0]const u8, i32, i32, [*c]u8, u8, i32, i32, bool, i32, bool) callconv(.c) i32,
+    font: *const fn (*TicMem, [*:0]const u8, i32, i32, [*]const u8, u8, i32, i32, bool, i32, bool) callconv(.c) i32,
     mouse: *const fn (*TicMem) callconv(.c) TicPoint,
     circ: *const fn (*TicMem, i32, i32, i32, u8) callconv(.c) void,
     circb: *const fn (*TicMem, i32, i32, i32, u8) callconv(.c) void,
@@ -356,7 +356,7 @@ pub const API = extern struct {
     paint: *const fn (*TicMem, i32, i32, u8, u8) callconv(.c) void,
     tri: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, u8) callconv(.c) void,
     trib: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, u8) callconv(.c) void,
-    ttri: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, TicTextureSrc, [*c]u8, i32, f32, f32, f32, bool) callconv(.c) void,
+    ttri: *const fn (*TicMem, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, TicTextureSrc, [*]const u8, i32, f32, f32, f32, bool) callconv(.c) void,
     clip: *const fn (*TicMem, i32, i32, i32, i32) callconv(.c) void,
     music: *const fn (*TicMem, i32, i32, i32, bool, bool, i32, i32) callconv(.c) void,
     sync: *const fn (*TicMem, u32, i32, bool) callconv(.c) void,
