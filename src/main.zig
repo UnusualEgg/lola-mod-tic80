@@ -2,6 +2,7 @@ const std = @import("std");
 const tic = @import("tic80.zig");
 const lola = @import("lola");
 const tic_core = @import("tic.zig");
+const wrapper = @import("wrapper.zig");
 
 var time_func: *const fn (*TicMem) callconv(.c) f64 = undefined;
 
@@ -41,28 +42,37 @@ const State = struct {
     trace_buffer: [1024]u8 = undefined,
     trace: std.Io.Writer = undefined,
     have_displayed_err: bool = false,
+    fn_data: wrapper.FnData = undefined,
+    initialized: bool = false,
 
     fn callCallBack(self: *State, name: []const u8) void {
-        TicInterface.lolaCall(name, 0) catch |e| {
+        if (TicInterface.lolaCall(name, 0)) {
+            self.running = true;
+        } else |e| {
             switch (e) {
-                error.FunctionNotFound => {},
+                error.FunctionNotFound => {
+                    return;
+                },
                 else => {
                     self.err = e;
                     self.running = false;
+                    return;
                 },
             }
-        };
+        }
     }
     fn displayErr(self: *State, core: *TicCore) void {
-        if (self.err) |err| {
-            tic.trace(core.api, &core.memory, @errorName(err));
-            tic.exit(core.api, &core.memory);
-            self.have_displayed_err = true;
-        } else if (!self.running) {
-            tic.trace(core.api, &core.memory, "Program Ended!");
-            tic.exit(core.api, &core.memory);
+        if (!self.have_displayed_err) {
+            if (self.err) |err| {
+                tic.tracef(core.api, &core.memory, "error: {s}", .{@errorName(err)});
+                tic.exit(core.api, &core.memory);
+                self.have_displayed_err = true;
+            }
             self.have_displayed_err = true;
         }
+    }
+    fn installWrapped(self: *State, comptime name: []const u8, comptime required_params: usize, comptime default_values: anytype) !void {
+        try self.env.installFunction(name, wrapper.wrap(name, &self.fn_data, required_params, default_values));
     }
 };
 var state = State{};
@@ -122,7 +132,8 @@ export const ScriptConfig: tic_core.TicScript = .{
     .api_keywords = &.{},
 
     .demo = demo,
-    .mark = .{ .name = "mark" },
+    .mark = .{},
+    .demos = &demos,
 };
 const keywords = [_][*:0]const u8{
     "and",
@@ -142,7 +153,7 @@ const keywords = [_][*:0]const u8{
 };
 const TicMem = tic_core.TicMem;
 const TicCore = tic_core.TicCore;
-var demos = [_:null]?tic_core.TicDemo{demo};
+var demos = [_]tic_core.TicDemo{ .{ .data = demo_code, .size = demo_code.len, .name = "hello_world.tic" }, .{ .data = null } };
 const demo_code = @embedFile("lola.tic.gz");
 const demo: tic_core.TicDemo = .{
     .data = demo_code,
@@ -150,28 +161,37 @@ const demo: tic_core.TicDemo = .{
 };
 
 fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
-    _ = .{ memory, code };
+    // _ = .{ memory, code };
+    tic_close(memory);
     const core: *TicCore = @ptrCast(memory);
     core.data.trace(core.data.data, "Hello from lola!", 15);
     core.api.trace(memory, "Hello from api :3", 15);
     time_func = core.api.time;
     libs.tic.api = core.api;
     state.alloc = std.heap.smp_allocator;
+
+    state.fn_data = .{ .alloc = state.alloc, .api = &core.api, .mem = memory };
+
     compile(core, "cart.lola", code) catch |e| {
         core.api.trace(memory, @errorName(e), 15);
+        state.running = false;
+        state.err = e;
     };
     return true;
 }
 fn tic_close(memory: *TicMem) callconv(.c) void {
     _ = .{memory};
-    state.vm.deinit();
-    state.pool.deinit();
-    state.env.deinit();
-    state.compile_unit.deinit();
+    if (state.initialized) {
+        state.vm.deinit();
+        state.env.deinit();
+        state.pool.deinit();
+        state.compile_unit.deinit();
+    }
+    state = .{};
 }
 const TicInterface = struct {
     //get the private context type
-    const Context = @typeInfo(@typeInfo(@TypeOf(lola.runtime.VM.deinitContext)).@"fn".params[1].type.?).pointer.child;
+    pub const Context = @typeInfo(@typeInfo(@TypeOf(lola.runtime.VM.deinitContext)).@"fn".params[1].type.?).pointer.child;
     // fn fieldType(comptime Struct: type, comptime field_name: []const u8) type {
     //     const index = std.meta.fieldIndex(Struct, field_name) orelse @compileError("Field does not exist");
     //     return @typeInfo(Struct).@"struct".fields[index];
@@ -240,40 +260,34 @@ const TicInterface = struct {
     }
 };
 /// returns true if it should keep being ran
-fn tryRun(api: tic_core.API, memory: *TicMem) error{EndOfStream}!bool {
+fn tryRun(api: tic_core.API, memory: *TicMem) bool {
     if (run(api, memory)) |result| {
         if (!result) return false;
     } else |err| {
-        if (err == error.InvalidJump) {
-            return error.EndOfStream;
-        } else {
-            state.running = false;
-            if (err != error.Completed) {
-                state.err = err;
-            }
+        state.running = false;
+        if (err != error.Completed) {
+            state.err = err;
         }
+        return false;
     }
     return true;
 }
 fn tic_boot(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
-    while (state.running) {
-        //run global scope then run BOOT
-        const result = tryRun(core.api, &core.memory) catch second: {
-            state.callCallBack("BOOT");
-            break :second tryRun(core.api, &core.memory) catch break;
-        };
-        if (!result) break;
+    //run global scope then run BOOT
+    while (state.running and !tryRun(core.api, &core.memory)) {}
+    if (state.err == null) {
+        state.callCallBack("BOOT");
     }
+    while (state.running and !tryRun(core.api, &core.memory)) {}
     state.displayErr(core);
 }
 fn tic_tick(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
-    while (state.running) {
+    if (state.err == null) {
         state.callCallBack("TIC");
-        const result = tryRun(core.api, &core.memory) catch break;
-        if (!result) break;
     }
+    while (state.running and !tryRun(core.api, &core.memory)) {}
     state.displayErr(core);
 }
 fn tic_blit(memory: *TicMem, row: i32, data: tic_core.UserData) callconv(.c) void {
@@ -290,63 +304,44 @@ fn tic_get_outline(code: [*:0]const u8, size: *i32) callconv(.c) ?*const tic_cor
 }
 fn tic_eval(mem: *TicMem, code: [*:0]const u8) callconv(.c) void {
     _ = .{ mem, code };
+    // std.log.debug("eval!", .{});
+    _ = tic_init(mem, code);
 }
 
 fn tic_isalnum(c: c_char) callconv(.c) bool {
     return std.ascii.isAlphanumeric(@intCast(c));
 }
-// export fn TIC() void {
-//     // while (state.running) {
-//     //     if (run()) |result| {
-//     //         if (!result) break;
-//     //     } else |err| {
-//     //         state.running = false;
-//     //         if (err != error.Completed) {
-//     //             state.err = err;
-//     //         }
-//     //     }
-//     // }
-//     // if (state.err) |err| {
-//     //     tic.trace(@errorName(err));
-//     //     tic.exit();
-//     // } else if (!state.running) {
-//     //     tic.trace("Program Ended!");
-//     //     tic.exit();
-//     // }
-// }
 
-// export fn BDR() void {}
-
-// export fn OVR() void {}
-
-// const trace_writer = struct {
-//     fn drain_trace(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
-//         tic.trace("draining");
-//         if (w.end > 0) {
-//             tic.tracef("{s}", .{w.buffered()});
-//             w.end = 0;
-//         }
-//         var written: usize = 0;
-//         for (data[0 .. data.len - 1]) |buf| {
-//             tic.tracef("{s}", .{buf});
-//             written += data.len;
-//         }
-//         const last = data[data.len - 1];
-//         for (0..splat) |_| {
-//             tic.tracef("{s}", .{last});
-//             written += last.len;
-//         }
-//         return written;
-//     }
-//     fn writer(buffer: []u8) std.Io.Writer {
-//         return std.Io.Writer{
-//             .vtable = &std.Io.Writer.VTable{
-//                 .drain = drain_trace,
-//             },
-//             .buffer = buffer,
-//         };
-//     }
-// };
+const trace_writer = struct {
+    var mem: *TicMem = undefined;
+    var api: tic_core.API = undefined;
+    fn drain_trace(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        tic.trace(api, mem, "draining");
+        if (w.end > 0) {
+            tic.tracef(api, mem, "{s}", .{w.buffered()});
+            w.end = 0;
+        }
+        var written: usize = 0;
+        for (data[0 .. data.len - 1]) |buf| {
+            tic.tracef(api, mem, "{s}", .{buf});
+            written += data.len;
+        }
+        const last = data[data.len - 1];
+        for (0..splat) |_| {
+            tic.tracef(api, mem, "{s}", .{last});
+            written += last.len;
+        }
+        return written;
+    }
+    fn writer(buffer: []u8) std.Io.Writer {
+        return std.Io.Writer{
+            .vtable = &std.Io.Writer.VTable{
+                .drain = drain_trace,
+            },
+            .buffer = buffer,
+        };
+    }
+};
 
 /// returns true if it should continue to be ran
 fn run(api: tic_core.API, mem: *TicMem) !bool {
@@ -355,10 +350,19 @@ fn run(api: tic_core.API, mem: *TicMem) !bool {
     const result = state.vm.execute(limit) catch |err| {
         tic.tracef(api, mem, "Panic during execution: {s}", .{@errorName(err)});
         tic.trace(api, mem, "Call stack:");
-
-        state.vm.printStackTrace(&state.trace) catch {
+        var stdout = std.fs.File.stdout().writer(&.{});
+        state.vm.printStackTrace(&stdout.interface) catch {
             tic.trace(api, mem, "can't print stack trace");
         };
+        // trace_writer.mem = mem;
+        // trace_writer.api = api;
+        // var writer = trace_writer.writer(&state.trace_buffer);
+        // state.vm.printStackTrace(&state.trace) catch {
+        //     tic.trace(api, mem, "can't print stack trace");
+        // };
+        // writer.flush() catch {
+        //     tic.trace(api, mem, "failed to flush");
+        // };
         return error.VMError;
     };
 
@@ -382,21 +386,15 @@ fn compile(core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     defer diag.deinit();
     state.compile_unit = lola.compiler.compile(state.alloc, &diag, chunk_name, src_slice) catch |e| {
         for (diag.messages.items) |message| {
-            tic.tracef(core.api, &core.memory, "{f}", .{message});
+            tic.tracef(core.api, &core.memory, "compiler: {f}", .{message});
         }
-        core.api.exit(&core.memory);
         return e;
     } orelse {
         for (diag.messages.items) |message| {
-            tic.tracef(core.api, &core.memory, "{f}", .{message});
+            tic.tracef(core.api, &core.memory, "compiler: {f}", .{message});
         }
-        core.data.@"error"(core.data.data, "did't compile");
-        core.api.exit(&core.memory);
         return error.DidNotCompile;
     };
-    //remove last element
-    state.compile_unit.code.len -= 1;
-    // state.compile_unit.code = state.compile_unit.code[0 .. state.compile_unit.code.len - 2];
     errdefer state.compile_unit.deinit();
 
     state.pool = PoolType.init(state.alloc);
@@ -405,15 +403,32 @@ fn compile(core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     state.env = try lola.runtime.Environment.init(state.alloc, &state.compile_unit, state.pool.interface());
     errdefer state.env.deinit();
     // try state.env.installModule(api, .null_pointer);
-    try libs.tic.installWrapped(&core.memory, &state.env);
+    try libs.tic.installWrapped(&core.memory, &state.env, &state.fn_data);
+    try state.installWrapped("cls", 0, .{@as(u8, 0)});
+    try state.installWrapped("print", 1, .{ 0, 0, 15, false, 1, false });
+    try state.installWrapped("exit", 0, .{});
+    try state.installWrapped("circ", 4, .{});
+    try state.installWrapped("circb", 4, .{});
+    try state.installWrapped("clip", 4, .{});
+    try state.installWrapped("elli", 5, .{});
+    try state.installWrapped("exit", 5, .{});
+    try state.installWrapped("fft", 1, .{-1});
+    try state.installWrapped("ffts", 1, .{-1});
+    try state.installWrapped("fget", 2, .{});
+    try state.installWrapped("fset", 3, .{});
+    //TODO font (similar to print with trans_colors)
+    try state.installWrapped("key", 0, .{0xff});
+    try state.installWrapped("keyp", 0, .{ 0xff, -1, -1 });
+    try state.installWrapped("line", 5, .{});
+    //TODO the rest. refer to `tic_core.api`
 
     // lola.libs.std
     // if (opts.array)
-    //     try state.env.installModule(libs.array, lola.runtime.Context.null_pointer);
+    // try state.env.installModule(libs.array, lola.runtime.Context.null_pointer);
     // if (opts.math)
-    //     try state.env.installModule(libs.math, lola.runtime.Context.null_pointer);
+    // try state.env.installModule(libs.math, lola.runtime.Context.null_pointer);
     // if (opts.string)
-    //     try state.env.installModule(libs.string, lola.runtime.Context.null_pointer);
+    // try state.env.installModule(libs.string, lola.runtime.Context.null_pointer);
     // if (opts.runtime)
     //     try state.env.installModule(libs.runtime, lola.runtime.Context.null_pointer);
     // if (opts.stdlib)
@@ -423,10 +438,12 @@ fn compile(core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
 
     // try state.env.installModule(libs.w4, lola.runtime.Context.null_pointer);
     try state.env.installModule(libs.std, .null_pointer);
+    // try state.env.installFunction("Floor", .initSimpleUser(libs.std.Floor));
     try state.env.installModule(libs.runtime, .null_pointer);
 
     state.vm = try lola.runtime.vm.VM.init(state.alloc, &state.env);
     state.running = true;
+    state.initialized = true;
 }
 
 // //logging

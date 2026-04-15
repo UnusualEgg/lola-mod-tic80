@@ -487,14 +487,13 @@ pub fn trace(api: API, mem: *TicMem, text: [:0]const u8) void {
 }
 
 pub fn tracef(api: API, mem: *TicMem, comptime fmt: []const u8, fmtargs: anytype) void {
-    const Static = struct {
-        var buf: [MAX_STRING_SIZE:0]u8 = @splat(0);
-    };
-    const slice = std.fmt.bufPrintZ(&Static.buf, fmt, fmtargs) catch {
+    const alloc = std.heap.smp_allocator;
+    if (std.fmt.allocPrintSentinel(alloc, fmt, fmtargs, 0)) |slice| {
+        api.trace(mem, slice, 15);
+        alloc.free(slice);
+    } else |_| {
         api.trace(mem, "unable to print format", 15);
-        return;
-    };
-    api.trace(mem, slice, 15);
+    }
 }
 
 const SectionFlags = packed struct {
