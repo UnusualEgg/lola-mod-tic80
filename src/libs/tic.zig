@@ -4,22 +4,12 @@ const tic = @import("../tic80.zig");
 const tic_core = @import("../tic.zig");
 const wrapper = @import("../wrapper.zig");
 
-pub var api: tic_core.API = undefined;
-
 const Environment = lola.runtime.Environment;
 const Context = lola.runtime.Context;
 const Value = lola.runtime.value.Value;
 const TicMem = tic_core.TicMem;
-const wrapped = struct {
-    pub fn btn(mem: *TicMem, id: i32) bool {
-        return tic.btn(&api, mem, id);
-    }
-};
 
-pub fn installWrapped(mem: *TicMem, env: *Environment, func_data: *wrapper.FnData) !void {
-    inline for (@typeInfo(wrapped).@"struct".decls) |decl| {
-        try env.installFunction(decl.name, lola.runtime.Function.wrapWithAnyPointer(@field(wrapped, decl.name), mem));
-    }
+pub fn installWrapped(env: *Environment, func_data: *wrapper.FnData) !void {
     inline for (@typeInfo(regular).@"struct".decls) |decl| {
         try env.installFunction(decl.name, lola.runtime.Function{ .syncUser = .{
             .call = @field(regular, decl.name),
@@ -54,6 +44,20 @@ const regular = struct {
             else => error.TypeMismatch,
         } else .{ &.{}, false };
     }
+    pub fn btn(
+        _: *Environment,
+        wrapped_context: Context,
+        args: []const Value,
+    ) !Value {
+        const data: *FnData = wrapped_context.cast(*FnData);
+        if (args.len > 1) return error.InvalidArgs;
+        if (args.len > 0) {
+            const id = try args[0].toInteger(u2);
+            return Value.initBoolean(data.api.btn(data.mem, id) != 0);
+        } else {
+            return Value.initInteger(u32, data.api.btn(data.mem, -1));
+        }
+    }
     pub fn btnp(
         _: *Environment,
         wrapped_context: Context,
@@ -65,7 +69,7 @@ const regular = struct {
         const id = try args[0].toInteger(i32);
         const hold = if (args.len > 1) try args[1].toInteger(i32) else -1;
         const period = if (args.len > 2) try args[2].toInteger(i32) else -1;
-        return Value.initBoolean(api.btnp(data.mem, id, hold, period) != 0);
+        return Value.initBoolean(data.api.btnp(data.mem, id, hold, period) != 0);
     }
     pub fn map(
         _: *Environment,
@@ -84,7 +88,7 @@ const regular = struct {
         defer if (should_free) data.alloc.free(trans_colors);
         const scale = try maybeArg(args, 7, i32, 1);
 
-        api.map(data.mem, x, y, w, h, sx, sy, trans_colors.ptr, @intCast(trans_colors.len), scale, data.remap_func, data.remap_data);
+        data.api.map(data.mem, x, y, w, h, sx, sy, trans_colors.ptr, @intCast(trans_colors.len), scale, data.remap_func, data.remap_data);
         return .void;
     }
 
@@ -211,7 +215,7 @@ const regular = struct {
                 else => return error.InvalidArgs,
             }
         }
-        api.sfx(data.mem, index, note, octave, duration, channel, volumes[0], volumes[1], speed);
+        data.api.sfx(data.mem, index, note, octave, duration, channel, volumes[0], volumes[1], speed);
         return .void;
     }
 
@@ -241,7 +245,7 @@ const regular = struct {
             tic_core.TicRotate.no_rotate;
         const w: i32 = if (args.len > 7) try args[7].toInteger(i32) else 1;
         const h: i32 = if (args.len > 8) try args[8].toInteger(i32) else 1;
-        api.spr(data.mem, id, x, y, w, h, trans_colors.ptr, @intCast(trans_colors.len), scale, flip, rotate);
+        data.api.spr(data.mem, id, x, y, w, h, trans_colors.ptr, @intCast(trans_colors.len), scale, flip, rotate);
         return .void;
     }
 
@@ -279,9 +283,9 @@ const regular = struct {
             const z1: f32 = @floatCast(try args[14].toNumber());
             const z2: f32 = if (args.len > 15) @floatCast(try args[15].toNumber()) else 0;
             const z3: f32 = if (args.len > 15) @floatCast(try args[15].toNumber()) else 0;
-            api.ttri(data.mem, x1, y1, x2, y2, x3, y3, @"u1", v1, @"u2", v2, @"u3", v3, src, trans_colors.ptr, @intCast(trans_colors.len), z1, z2, z3, true);
+            data.api.ttri(data.mem, x1, y1, x2, y2, x3, y3, @"u1", v1, @"u2", v2, @"u3", v3, src, trans_colors.ptr, @intCast(trans_colors.len), z1, z2, z3, true);
         } else {
-            api.ttri(data.mem, x1, y1, x2, y2, x3, y3, @"u1", v1, @"u2", v2, @"u3", v3, src, trans_colors.ptr, @intCast(trans_colors.len), 0, 0, 0, false);
+            data.api.ttri(data.mem, x1, y1, x2, y2, x3, y3, @"u1", v1, @"u2", v2, @"u3", v3, src, trans_colors.ptr, @intCast(trans_colors.len), 0, 0, 0, false);
         }
         return .void;
     }
