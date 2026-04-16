@@ -4,46 +4,42 @@ const tic = @import("../tic80.zig");
 const tic_core = @import("../tic.zig");
 const wrapper = @import("../wrapper.zig");
 
+const FnData = wrapper.FnData;
 const Environment = lola.runtime.Environment;
 const Context = lola.runtime.Context;
 const Value = lola.runtime.value.Value;
 const TicMem = tic_core.TicMem;
 
-pub fn installWrapped(env: *Environment, func_data: *wrapper.FnData) !void {
-    inline for (@typeInfo(regular).@"struct".decls) |decl| {
-        try env.installFunction(decl.name, lola.runtime.Function{ .syncUser = .{
-            .call = @field(regular, decl.name),
-            .context = .make(*wrapper.FnData, func_data),
-            .destructor = null,
-        } });
-    }
+pub fn installFunctions(env: *Environment, func_data: *wrapper.FnData) !void {
+    try env.installModule(api, .make(*wrapper.FnData, func_data));
 }
-const regular = struct {
-    const FnData = @import("../wrapper.zig").FnData;
-    fn maybeArg(args: []const Value, index: usize, T: type, default: T) error{ TypeMismatch, OutOfRange }!T {
-        return if (args.len > index) try args[index].toInteger(T) else default;
-    }
-    fn getTransColors(args: []const Value, data: *FnData, arg_index: usize) !struct { []const u8, bool } {
-        const static = struct {
-            var single: u8 = undefined;
-        };
-        return if (args.len > arg_index) switch (args[arg_index]) {
-            .void => .{ &.{}, false },
-            .array => |array| colors: {
-                const colors = try data.alloc.alloc(u8, array.contents.len);
-                errdefer data.alloc.free(colors);
-                for (array.contents, colors) |value, *color| {
-                    color.* = try value.toInteger(u8);
-                }
-                break :colors .{ colors, true };
-            },
-            .number => .{ if (args[arg_index].number == -1) &.{} else blk: {
-                static.single = try args[arg_index].toInteger(u8);
-                break :blk (&static.single)[0..1];
-            }, false },
-            else => error.TypeMismatch,
-        } else .{ &.{}, false };
-    }
+
+fn maybeArg(args: []const Value, index: usize, T: type, default: T) error{ TypeMismatch, OutOfRange }!T {
+    return if (args.len > index) try args[index].toInteger(T) else default;
+}
+fn getTransColors(args: []const Value, data: *FnData, arg_index: usize) !struct { []const u8, bool } {
+    const static = struct {
+        var single: u8 = undefined;
+    };
+    return if (args.len > arg_index) switch (args[arg_index]) {
+        .void => .{ &.{}, false },
+        .array => |array| colors: {
+            const colors = try data.alloc.alloc(u8, array.contents.len);
+            errdefer data.alloc.free(colors);
+            for (array.contents, colors) |value, *color| {
+                color.* = try value.toInteger(u8);
+            }
+            break :colors .{ colors, true };
+        },
+        .number => .{ if (args[arg_index].number == -1) &.{} else blk: {
+            static.single = try args[arg_index].toInteger(u8);
+            break :blk (&static.single)[0..1];
+        }, false },
+        else => error.TypeMismatch,
+    } else .{ &.{}, false };
+}
+
+const api = struct {
     pub fn btn(
         _: *Environment,
         wrapped_context: Context,
@@ -307,5 +303,3 @@ const regular = struct {
         return Value.initInteger(i32, prev);
     }
 };
-// pub const needs_alloc = struct {};
-// pub fn spr(env: *Environment, context: AnyPointer, args: []const Value) anyerror!Value {}

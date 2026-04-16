@@ -1,17 +1,3 @@
-// ****************************************************************************
-// ****************************************************************************
-//
-//        DO NOT MODIFY THIS FILE.  THIS IS A COPY, NO THE ORIGINAL.
-//
-// ****************************************************************************
-// ****************************************************************************
-//
-// It is merely a copy of `./templates/zig/src/tic80.zig`
-//
-// Modify that file then run `./tools/zig_sync` to update all libraries
-//
-// (yes even the original has this exact comment, be careful)
-
 const std = @import("std");
 const tic_core = @import("tic.zig");
 const API = *const tic_core.API;
@@ -111,53 +97,6 @@ pub const raw = struct {
         by180 = 2,
         by270 = 3,
     };
-    pub extern fn btn(id: i32) i32;
-    pub extern fn btnp(id: i32, hold: i32, period: i32) bool;
-    pub extern fn clip(x: i32, y: i32, w: i32, h: i32) void;
-    pub extern fn cls(color: i32) void;
-    pub extern fn circ(x: i32, y: i32, radius: i32, color: i32) void;
-    pub extern fn circb(x: i32, y: i32, radius: i32, color: i32) void;
-    pub extern fn exit() void;
-    pub extern fn elli(x: i32, y: i32, a: i32, b: i32, color: i32) void;
-    pub extern fn ellib(x: i32, y: i32, a: i32, b: i32, color: i32) void;
-    pub extern fn fget(id: i32, flag: u8) bool;
-    pub extern fn font(text: [*:0]u8, x: u32, y: i32, trans_colors: ?[*]const u8, color_count: i32, char_width: i32, char_height: i32, fixed: bool, scale: i32, alt: bool) i32;
-    pub extern fn fset(id: i32, flag: u8, value: bool) bool;
-    pub extern fn key(keycode: i32) bool;
-    pub extern fn keyp(keycode: i32, hold: i32, period: i32) bool;
-    pub extern fn line(x0: i32, y0: i32, x1: i32, y1: i32, color: i32) void;
-    // pass struct by pointer SHOULD:tm JUST WORK
-    pub extern fn map(x: i32, y: i32, w: i32, h: i32, sx: i32, sy: i32, trans_colors: ?[*]const u8, color_count: i32, scale: i32, remap: ?*const RemapArgs) void;
-    pub extern fn memcpy(to: u32, from: u32, length: u32) void;
-    pub extern fn memset(addr: u32, value: u8, length: u32) void;
-    pub extern fn mget(x: i32, y: i32) i32;
-    pub extern fn mouse(data: *MouseData) void;
-    pub extern fn mset(x: i32, y: i32, tile_id: u32) void;
-    pub extern fn music(track: i32, frame: i32, row: i32, loop: bool, sustain: bool, tempo: i32, speed: i32) void;
-    pub extern fn peek(addr: u32, bits: i32) u8;
-    pub extern fn peek4(addr4: u32) u8;
-    pub extern fn peek2(addr2: u32) u8;
-    pub extern fn peek1(bitaddr: u32) u8;
-    pub extern fn pix(x: i32, y: i32, color: i32) void;
-    pub extern fn pmem(index: u32, value: i64) u32;
-    pub extern fn poke(addr: u32, value: u8, bits: i32) void;
-    pub extern fn poke4(addr4: u32, value: u8) void;
-    pub extern fn poke2(addr2: u32, value: u8) void;
-    pub extern fn poke1(bitaddr: u32, value: u8) void;
-    pub extern fn print(text: [*:0]const u8, x: i32, y: i32, color: i32, fixed: bool, scale: i32, smallfont: bool) i32;
-    pub extern fn rect(x: i32, y: i32, w: i32, h: i32, color: i32) void;
-    pub extern fn rectb(x: i32, y: i32, w: i32, h: i32, color: i32) void;
-    pub extern fn reset() void;
-    pub extern fn sfx(id: i32, note: i32, octave: i32, duration: i32, channel: i32, volumeLeft: i32, volumeRight: i32, speed: i32) void;
-    pub extern fn spr(id: i32, x: i32, y: i32, trans_colors: ?[*]const u8, color_count: i32, scale: i32, flip: i32, rotate: i32, w: i32, h: i32) void;
-    pub extern fn sync(mask: i32, bank: i32, tocart: bool) void;
-    pub extern fn ttri(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, u1: f32, v1: f32, u2: f32, v2: f32, u3: f32, v3: f32, texture_source: i32, trans_colors: ?[*]const u8, color_count: i32, z1: f32, z2: f32, z3: f32, depth: bool) void;
-    pub extern fn tri(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, color: i32) void;
-    pub extern fn trib(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, color: i32) void;
-    pub extern fn time() f32;
-    pub extern fn trace(text: [*:0]const u8, color: i32) void;
-    pub extern fn tstamp() u64;
-    pub extern fn vbank(bank: i32) u8;
 };
 
 // -----
@@ -173,10 +112,6 @@ const MouseData = extern struct {
     right: bool,
 };
 
-pub const key = raw.key;
-// TODO: nicer API?
-pub const keyp = raw.keyp;
-pub const held = raw.btnp;
 const TicMem = tic_core.TicMem;
 pub fn pressed(api: API, mem: *TicMem, id: i32) bool {
     return api.btnp(mem, id, -1, -1);
@@ -193,10 +128,6 @@ pub fn anybtn(api: API, mem: *TicMem) bool {
 // -----------------
 // DRAW / DRAW UTILS
 
-pub const clip = raw.clip;
-pub fn noclip() void {
-    raw.clip(0, 0, WIDTH, HEIGHT);
-}
 pub fn cls(api: API, mem: *TicMem, color: u8) void {
     api.cls(mem, color);
 }
@@ -230,42 +161,6 @@ pub fn mget(api: API, mem: *TicMem, x: i32, y: i32) u8 {
 pub fn mouse(api: API, mem: *TicMem, data: *MouseData) tic_core.TicPoint {
     return api.mouse(mem, data);
 }
-
-// map [x=0 y=0] [w=30 h=17] [sx=0 sy=0] [colorkey=-1] [scale=1] [remap=nil]
-// TODO: remap should be what????
-// pub extern fn map(x: i32, y: i32, w: i32, h: i32, sx: i32, sy: i32, trans_colors: ?[*]u8, color_count: i32, scale: i32, remap: i32) void;
-
-const RemapArgs = extern struct { remap: *const fn (?*anyopaque, i32, i32, *RemapInfo) callconv(.C) void, data: ?*anyopaque, res_ptr: *RemapInfo };
-pub const RemapInfo = extern struct {
-    index: u8,
-    flip: raw.Flip,
-    rotate: raw.Rotate,
-};
-const MapArgs = struct {
-    x: i32 = 0,
-    y: i32 = 0,
-    w: i32 = 30,
-    h: i32 = 17,
-    sx: i32 = 0,
-    sy: i32 = 0,
-    transparent: []const u8 = &.{},
-    scale: u8 = 1,
-    remap: ?*const fn (i32, i32, *RemapInfo) void = null, // TODO
-};
-
-fn remap_wrapper(data: ?*anyopaque, x: i32, y: i32, info: *RemapInfo) callconv(.C) void {
-    const fun: *const fn (i32, i32, *RemapInfo) void = @ptrCast(data orelse return);
-    fun(x, y, info);
-}
-// pub fn map(args: MapArgs) void {
-//     const color_count = @as(u8, @intCast(args.transparent.len));
-//     const colors = args.transparent.ptr;
-//     std.debug.assert(color_count < 16);
-//     // why?
-//     var remapinfo = .{ .index = undefined, .flip = undefined, .rotate = undefined };
-//     const remap_args: ?RemapArgs = if (args.remap) |it| .{ .remap = &remap_wrapper, .data = @ptrCast(@constCast(it)), .res_ptr = &remapinfo } else null;
-//     raw.map(args.x, args.y, args.w, args.h, args.sx, args.sy, colors, color_count, args.scale, if (remap_args) |it| &it else null);
-// }
 
 pub fn pix(api: API, mem: *TicMem, x: i32, y: i32, color: u8) void {
     api.pix(mem, x, y, color);
@@ -455,24 +350,9 @@ pub fn pmemget(api: API, mem: *TicMem, index: u32) u32 {
     return api.pmem(mem, index, -1);
 }
 
-// pub const memcpy = raw.memcpy;
-// pub const memset = raw.memset;
-
-// pub fn poke(addr: u32, value: u8) void {
-//     raw.poke(addr, value, 8);
-// }
-
-// pub const poke4 = raw.poke4;
-// pub const poke2 = raw.poke2;
-// pub const poke1 = raw.poke1;
-
 pub fn peek(api: API, mem: *TicMem, addr: u32) u8 {
     return api.peek(mem, addr, 8);
 }
-// pub const peek4 = raw.peek4;
-// pub const peek2 = raw.peek2;
-// pub const peek1 = raw.peek1;
-// pub const vbank = raw.vbank;
 
 // SYSTEM
 
@@ -495,42 +375,3 @@ pub fn tracef(api: API, mem: *TicMem, comptime fmt: []const u8, fmtargs: anytype
         api.trace(mem, "unable to print format", 15);
     }
 }
-
-const SectionFlags = packed struct {
-    // tiles   = 1<<0 -- 1
-    // sprites = 1<<1 -- 2
-    // map     = 1<<2 -- 4
-    // sfx     = 1<<3 -- 8
-    // music   = 1<<4 -- 16
-    // palette = 1<<5 -- 32
-    // flags   = 1<<6 -- 64
-    // screen  = 1<<7 -- 128 (as of 0.90)
-    tiles: bool = false,
-    sprites: bool = false,
-    map: bool = false,
-    sfx: bool = false,
-    music: bool = false,
-    palette: bool = false,
-    flags: bool = false,
-    screen: bool = false,
-};
-// const SectionFlagsMask = packed union {
-//     sections: SectionFlags,
-//     value: u8
-// };
-const SyncArgs = struct {
-    sections: SectionFlags,
-    bank: u8,
-    toCartridge: bool = false,
-    fromCartridge: bool = false,
-};
-
-pub fn sync(args: SyncArgs) void {
-    // var mask = SectionFlagsMask { .sections = args.sections };
-    raw.sync(@as(u8, @bitCast(args.sections)), args.bank, args.toCartridge);
-}
-
-// TIME KEEPING
-
-pub const time = raw.time;
-pub const tstamp = raw.tstamp;

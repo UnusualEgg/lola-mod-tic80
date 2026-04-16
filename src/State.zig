@@ -30,7 +30,6 @@ compile_unit: lola.CompileUnit = undefined,
 env: lola.runtime.Environment = undefined,
 vm: lola.runtime.VM = undefined,
 
-running: bool = false,
 err: ?anyerror = null,
 trace_buffer: [1024]u8 = undefined,
 trace: std.Io.Writer = undefined,
@@ -42,9 +41,10 @@ has_bdr: bool = true,
 has_menu: bool = true,
 has_remap: bool = true,
 
-fn callCallBack(self: *Self, name: []const u8) void {
-    if (self.vm.callLolaFunction(&self.env, name, &.{}, null)) {
-        self.running = true;
+pub fn callCallBack(self: *Self, name: []const u8) void {
+    if (self.vm.callLolaFunction(&self.env, name, &.{})) |value| {
+        var owned = value;
+        owned.deinit();
     } else |e| {
         switch (e) {
             error.FunctionNotFound => {
@@ -52,7 +52,6 @@ fn callCallBack(self: *Self, name: []const u8) void {
             },
             else => {
                 self.err = e;
-                self.running = false;
                 return;
             },
         }
@@ -73,30 +72,29 @@ fn installWrapped(self: *Self, comptime name: []const u8, comptime required_para
 }
 pub fn setErr(self: *Self, err: anyerror) void {
     self.err = err;
-    self.running = false;
 }
 pub fn callLolaFunction(self: *Self, function_name: []const u8, args: []const lola.runtime.Value) error{ FunctionNotFound, VmError }!lola.runtime.Value {
-    self.vm.callLolaFunction(&self.env, function_name, args) catch |err| switch (err) {
-        error.FunctionNotFound => return error.FunctionNotFound,
-        else => {
-            self.err = err;
-            self.running = false;
-        },
+    return self.vm.callLolaFunction(&self.env, function_name, args) catch |err| {
+        switch (err) {
+            error.FunctionNotFound => return error.FunctionNotFound,
+            else => {
+                self.err = err;
+            },
+        }
+        return .void;
     };
 }
 
 /// returns true if it should keep being ran
-fn tryRun(self: *Self, api: *const tic_core.API, memory: *TicMem) bool {
-    if (run(api, memory)) |result| {
-        if (!result) return false;
+pub fn tryRun(self: *Self, api: *const tic_core.API, memory: *TicMem) bool {
+    if (self.run(api, memory)) |result| {
+        return result;
     } else |err| {
-        self.running = false;
         if (err != error.Completed) {
             self.err = err;
         }
         return false;
     }
-    return true;
 }
 
 /// returns true if it should continue to be ran
@@ -130,26 +128,27 @@ fn run(self: *Self, api: *const tic_core.API, mem: *TicMem) !bool {
     };
 }
 
-fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
+fn printDiagnotics(self: *Self, core: *TicCore, diag: *const lola.compiler.Diagnostics) !void {
+    var alloc_writer = std.Io.Writer.Allocating.init(self.alloc);
+    defer alloc_writer.deinit();
+    for (diag.messages.items) |message| {
+        try alloc_writer.writer.print("{f}\n", .{message});
+    }
+    const len = alloc_writer.written().len;
+    try alloc_writer.writer.writeByte(0);
+    const str = alloc_writer.written()[0..len :0];
+    core.data.@"error"(core.data, str);
+}
+pub fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     const src_slice = std.mem.span(src);
     var diag: lola.compiler.Diagnostics = .init(self.alloc);
     defer diag.deinit();
     self.compile_unit = lola.compiler.compile(self.alloc, &diag, chunk_name, src_slice) catch |e| {
-        var alloc_writer = std.Io.Writer.Allocating.init(self.alloc);
-        defer alloc_writer.deinit();
-        for (diag.messages.items) |message| {
-            alloc_writer.writer.print("{f}\n", .{message});
-        }
-        core.data.@"error"(core.data, alloc_writer.written());
+        try self.printDiagnotics(core, &diag);
         return e;
     } orelse {
-        var alloc_writer = std.Io.Writer.Allocating.init(self.alloc);
-        defer alloc_writer.deinit();
-        for (diag.messages.items) |message| {
-            alloc_writer.writer.print("{f}\n", .{message});
-        }
-        core.data.@"error"(core.data, alloc_writer.written());
-        return error.DidNotCompile;
+        try self.printDiagnotics(core, &diag);
+        return error.ValidationFailed;
     };
     errdefer self.compile_unit.deinit();
 
@@ -159,8 +158,7 @@ fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]const 
     self.env = try lola.runtime.Environment.init(self.alloc, &self.compile_unit, self.pool.interface());
     errdefer self.env.deinit();
     // try self.env.installModule(api, .null_pointer);
-    try libs.tic.installWrapped(&core.memory, &self.env, &self.fn_data);
-    try self.installWrapped("print", 1, .{ 0, 0, 15, false, 1, false });
+    try libs.tic.installFunctions(&self.env, &self.fn_data);
 
     try self.installWrapped("circ", 4, .{});
     try self.installWrapped("circb", 4, .{});
@@ -191,6 +189,7 @@ fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]const 
     try self.installWrapped("poke1", 2, .{});
     try self.installWrapped("poke2", 2, .{});
     try self.installWrapped("poke4", 2, .{});
+    try self.installWrapped("print", 1, .{ 0, 0, 15, false, 1, false });
     try self.installWrapped("rect", 5, .{});
     try self.installWrapped("rectb", 5, .{});
     try self.installWrapped("reset", 0, .{});
@@ -207,6 +206,5 @@ fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]const 
     try self.env.installModule(libs.runtime, .null_pointer);
 
     self.vm = try lola.runtime.vm.VM.init(self.alloc, &self.env);
-    self.running = true;
     self.initialized = true;
 }

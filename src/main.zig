@@ -109,9 +109,8 @@ fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
     core.data.trace(core.data.data, "Hello from lola!", 15);
     core.api.trace(memory, "Hello from api :3", 15);
 
-    compile(core, "cart.lola", code) catch |e| {
+    state.compile(core, "cart.lola", code) catch |e| {
         core.api.trace(memory, @errorName(e), 15);
-        state.running = false;
         state.err = e;
     };
     return true;
@@ -130,90 +129,66 @@ fn tic_close(memory: *TicMem) callconv(.c) void {
 fn tic_boot(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
     //run global scope then run BOOT
-    while (state.running and !tryRun(&core.api, &core.memory)) {}
+    while (state.tryRun(&core.api, &core.memory)) {}
     if (state.err == null) {
         state.callCallBack("BOOT");
     }
-    while (state.running and !tryRun(&core.api, &core.memory)) {}
     state.displayErr(core);
 }
 fn tic_tick(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
-    // if (memory != state.fn_data.mem) {
-    //     tic.tracef(state.fn_data.api, state.fn_data.mem, "Different!: {*} {*}", .{ memory, state.fn_data.mem });
-    // }
-    // if (&core.api != state.fn_data.api) {
-    //     tic.tracef(state.fn_data.api, state.fn_data.mem, "Different!: {*} {*}", .{ &core.api, state.fn_data.api });
-    // }
     if (state.err == null) {
         state.callCallBack("TIC");
     }
-    while (state.running and !state.tryRun(&core.api, &core.memory)) {}
     state.displayErr(core);
 }
 fn tic_nothing(_: *TicMem, _: i32, _: tic_core.UserData) callconv(.c) void {}
 fn tic_bdr(_: *TicMem, row: i32, _: tic_core.UserData) callconv(.c) void {
     // tic.tracef(state.fn_data.api, state.fn_data.mem, "has BDR: {}", .{state.has_bdr});
-    if (!state.has_bdr) return;
-    if (state.err == null) {
-        const args = [1]Value{Value.initInteger(i32, row)};
-        state.vm.callLolaFunction(
-            &state.env,
-            "BDR",
-            &args,
-            null,
-        ) catch |err| switch (err) {
-            error.FunctionNotFound => {
-                state.has_bdr = false;
-                return;
-            },
-            else => {
-                state.err = err;
-                state.running = false;
-                return;
-            },
-        };
-        state.running = true;
-        while (state.running and !state.tryRun(state.fn_data.api, state.fn_data.mem)) {}
-    }
+    if (!state.has_bdr or state.err != null) return;
+    const args = [1]Value{Value.initInteger(i32, row)};
+    var ret = state.vm.callLolaFunction(
+        &state.env,
+        "BDR",
+        &args,
+    ) catch |err| switch (err) {
+        error.FunctionNotFound => {
+            state.has_bdr = false;
+            return;
+        },
+        else => {
+            state.err = err;
+            return;
+        },
+    };
+    ret.deinit();
 }
 
 fn tic_menu(_: *TicMem, index: i32, _: tic_core.UserData) callconv(.c) void {
-    if (!state.has_menu) return;
-    if (state.err == null) {
-        const args = [1]Value{Value.initInteger(i32, index)};
-        state.vm.callLolaFunction(
-            &state.env,
-            "MENU",
-            &args,
-            null,
-        ) catch |err| switch (err) {
-            error.FunctionNotFound => {
-                state.has_menu = false;
-                return;
-            },
-            else => {
-                state.err = err;
-                state.running = false;
-                return;
-            },
-        };
-        state.running = true;
-        while (state.running and !state.tryRun(state.fn_data.api, state.fn_data.mem)) {}
-    }
+    if (!state.has_menu or state.err != null) return;
+    const args = [1]Value{Value.initInteger(i32, index)};
+    var ret = state.vm.callLolaFunction(
+        &state.env,
+        "MENU",
+        &args,
+    ) catch |err| switch (err) {
+        error.FunctionNotFound => {
+            state.has_menu = false;
+            return;
+        },
+        else => {
+            state.err = err;
+            return;
+        },
+    };
+    ret.deinit();
 }
 fn tic_get_outline(code: [*:0]const u8, size: *i32) callconv(.c) ?*const tic_core.TicOutlineItem {
-    // const Static = struct {
-    //     var outline: TicOutlineItem = undefined;
-    // };
-    // Static.outline = TicOutlineItem{ .pos = &code[0], .size = 0 };
     _ = code;
     size.* = 0;
     return null;
 }
 fn tic_eval(mem: *TicMem, code: [*:0]const u8) callconv(.c) void {
-    _ = .{ mem, code };
-    // std.log.debug("eval!", .{});
     _ = tic_init(mem, code);
 }
 
@@ -256,37 +231,6 @@ fn processRemapResult(result: *tic_core.RemapeResult, return_value: Value) !void
         else => return error.InvalidArgs,
     }
 }
-
-const trace_writer = struct {
-    var mem: *TicMem = undefined;
-    var api: tic_core.API = undefined;
-    fn drain_trace(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
-        tic.trace(api, mem, "draining");
-        if (w.end > 0) {
-            tic.tracef(api, mem, "{s}", .{w.buffered()});
-            w.end = 0;
-        }
-        var written: usize = 0;
-        for (data[0 .. data.len - 1]) |buf| {
-            tic.tracef(api, mem, "{s}", .{buf});
-            written += data.len;
-        }
-        const last = data[data.len - 1];
-        for (0..splat) |_| {
-            tic.tracef(api, mem, "{s}", .{last});
-            written += last.len;
-        }
-        return written;
-    }
-    fn writer(buffer: []u8) std.Io.Writer {
-        return std.Io.Writer{
-            .vtable = &std.Io.Writer.VTable{
-                .drain = drain_trace,
-            },
-            .buffer = buffer,
-        };
-    }
-};
 
 //logging
 pub const std_options: std.Options = .{
