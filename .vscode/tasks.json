@@ -18,10 +18,9 @@
             "presentation": {
                 "echo": true,
                 "focus": true,
-                "panel": "shared",
+                "panel": "dedicated",
                 "showReuseMessage": true,
                 "clear": true,
-                "revealProblems": "onProblem",
             }
         }
     ]
