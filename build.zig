@@ -14,14 +14,28 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "lola", .module = lola_mod },
         },
-        // .single_threaded = true,
-        // .pic = true,
     });
     const exe = b.addLibrary(.{
         .name = "lola",
         .root_module = exe_mod,
         .linkage = .dynamic,
     });
+    const native = b.resolveTargetQuery(.{});
+    const compress = b.addExecutable(.{
+        .name = "compress",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("compress.zig"),
+            .target = native,
+            .link_libc = true,
+        }),
+    });
+    compress.root_module.linkSystemLibrary("z", .{});
+
+    const compress_step = b.step("compress", "compress lola.tic (default new cart)");
+    const run_step = b.addRunArtifact(compress);
+    compress_step.dependOn(&run_step.step);
+
+    exe.step.dependOn(compress_step);
 
     b.installArtifact(exe);
 
