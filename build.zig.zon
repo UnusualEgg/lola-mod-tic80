@@ -33,8 +33,8 @@
     // internet connectivity.
     .dependencies = .{
         .lola = .{
-            .url = "git+https://github.com/unusualegg/LoLa?ref=update-zig#e944e33f1f77b1cfb52da09f5e0e7b7a0d9c6412",
-            .hash = "lola-0.1.0-zO-wvfuXbQGUFhpJxASKeMyoNWkbHxGyste907UcC6qO",
+            .url = "git+https://github.com/unusualegg/LoLa?ref=callbacks#163b69bffa51cf8343ad708ddecaba8cf21e8ebd",
+            .hash = "lola-0.1.0-zO-wvaWebQHMB88OpcTrWYePZGvFarOUdYW8j6ibpWPL",
         },
     },
     .paths = .{

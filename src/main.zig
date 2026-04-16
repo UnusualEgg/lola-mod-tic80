@@ -45,8 +45,11 @@ const State = struct {
     fn_data: wrapper.FnData = undefined,
     initialized: bool = false,
 
+    has_bdr: bool = true,
+    has_menu: bool = true,
+
     fn callCallBack(self: *State, name: []const u8) void {
-        if (TicInterface.lolaCall(name, 0)) {
+        if (state.vm.callLolaFunction(&state.env, name, &.{}, null)) {
             self.running = true;
         } else |e| {
             switch (e) {
@@ -64,8 +67,8 @@ const State = struct {
     fn displayErr(self: *State, core: *TicCore) void {
         if (!self.have_displayed_err) {
             if (self.err) |err| {
-                tic.tracef(core.api, &core.memory, "error: {s}", .{@errorName(err)});
-                tic.exit(core.api, &core.memory);
+                tic.tracef(&core.api, &core.memory, "error: {s}", .{@errorName(err)});
+                tic.exit(&core.api, &core.memory);
                 self.have_displayed_err = true;
             }
             self.have_displayed_err = true;
@@ -76,18 +79,6 @@ const State = struct {
     }
 };
 var state = State{};
-
-export fn BOOT() void {
-    // state.trace = trace_writer.writer(&state.trace_buffer);
-
-    // if (compile()) {
-    //     state.running = true;
-    //     tic.trace("successfully compiled!");
-    // } else |err| {
-    //     tic.tracef("compile error: {s}\n", .{@errorName(err)});
-    //     state.running = false;
-    // }
-}
 
 export const ScriptConfig: tic_core.TicScript = .{
     .id = 100,
@@ -102,9 +93,9 @@ export const ScriptConfig: tic_core.TicScript = .{
         .boot = tic_boot,
         .blit = .{
             .data = null,
-            .border = tic_blit,
-            .scanline = tic_blit,
-            .game_menu = tic_blit,
+            .border = tic_bdr,
+            .scanline = tic_nothing,
+            .game_menu = tic_menu,
         },
     },
 
@@ -170,7 +161,13 @@ fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
     libs.tic.api = core.api;
     state.alloc = std.heap.smp_allocator;
 
-    state.fn_data = .{ .alloc = state.alloc, .api = &core.api, .mem = memory };
+    state.fn_data = .{
+        .alloc = state.alloc,
+        .api = &core.api,
+        .mem = memory,
+        .remap_func = remapFunc,
+        .remap_data = null,
+    };
 
     compile(core, "cart.lola", code) catch |e| {
         core.api.trace(memory, @errorName(e), 15);
@@ -189,78 +186,9 @@ fn tic_close(memory: *TicMem) callconv(.c) void {
     }
     state = .{};
 }
-const TicInterface = struct {
-    //get the private context type
-    pub const Context = @typeInfo(@typeInfo(@TypeOf(lola.runtime.VM.deinitContext)).@"fn".params[1].type.?).pointer.child;
-    // fn fieldType(comptime Struct: type, comptime field_name: []const u8) type {
-    //     const index = std.meta.fieldIndex(Struct, field_name) orelse @compileError("Field does not exist");
-    //     return @typeInfo(Struct).@"struct".fields[index];
-    // }
-    // const Context = @typeInfo(fieldType(fieldType(lola.runtime.VM, "calls"), "items")).pointer.child;
 
-    /// Creates a new execution context.
-    /// The script function must have a resolved environment which
-    /// uses the same object pool as the main environment.
-    /// It is not possible to mix several object pools.
-    fn createContext(self: *lola.runtime.VM, fun: lola.runtime.Environment.ScriptFunction) std.mem.Allocator.Error!Context {
-        std.debug.assert(fun.environment != null);
-        std.debug.assert(fun.environment.?.objectPool.self == self.objectPool.self);
-        var ctx = Context{
-            .decoder = lola.Decoder.init(fun.environment.?.compileUnit.code),
-            .stackBalance = self.stack.items.len,
-            .locals = undefined,
-            .environment = fun.environment.?,
-        };
-        ctx.decoder.offset = fun.entryPoint;
-        ctx.locals = try self.allocator.alloc(lola.runtime.Value, fun.localCount);
-        for (ctx.locals) |*local| {
-            local.* = .void;
-        }
-        return ctx;
-    }
-    /// Pops a value from the stack. The ownership will be transferred to the caller.
-    fn pop(self: *lola.runtime.VM) !lola.runtime.Value {
-        if (self.calls.items.len > 0) {
-            const ctx = &self.calls.items[self.calls.items.len - 1];
-
-            // Assert we did not accidently have a stack underflow
-            std.debug.assert(self.stack.items.len >= ctx.stackBalance);
-
-            // this pop would produce a stack underrun for the current function call.
-            if (self.stack.items.len == ctx.stackBalance)
-                return error.StackImbalance;
-        }
-
-        return if (self.stack.pop()) |v| v else return error.StackImbalance;
-    }
-    fn readLocals(self: *lola.runtime.VM, call: lola.ir.Instruction.CallArg, locals: []lola.runtime.Value) !void {
-        var i: usize = 0;
-        while (i < call.argc) : (i += 1) {
-            var value = try pop(self);
-            if (i < locals.len) {
-                locals[i].replaceWith(value);
-            } else {
-                value.deinit(); // Discard the value
-            }
-        }
-    }
-    const CallError = error{FunctionNotFound} || error{StackImbalance} || std.mem.Allocator.Error;
-    fn lolaCall(fun_name: []const u8, argc: u8) CallError!void {
-        const fun: lola.runtime.Function = state.env.getMethod(fun_name) orelse return error.FunctionNotFound;
-        var context: Context = try TicInterface.createContext(&state.vm, fun.script);
-        errdefer state.vm.deinitContext(&context);
-
-        const call = lola.ir.Instruction.CallArg{ .function = fun_name, .argc = argc };
-        try readLocals(&state.vm, call, context.locals);
-
-        // Fixup stack balance after popping all locals
-        context.stackBalance = state.vm.stack.items.len;
-
-        try state.vm.calls.append(state.vm.allocator, context);
-    }
-};
 /// returns true if it should keep being ran
-fn tryRun(api: tic_core.API, memory: *TicMem) bool {
+fn tryRun(api: *const tic_core.API, memory: *TicMem) bool {
     if (run(api, memory)) |result| {
         if (!result) return false;
     } else |err| {
@@ -275,23 +203,76 @@ fn tryRun(api: tic_core.API, memory: *TicMem) bool {
 fn tic_boot(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
     //run global scope then run BOOT
-    while (state.running and !tryRun(core.api, &core.memory)) {}
+    while (state.running and !tryRun(&core.api, &core.memory)) {}
     if (state.err == null) {
         state.callCallBack("BOOT");
     }
-    while (state.running and !tryRun(core.api, &core.memory)) {}
+    while (state.running and !tryRun(&core.api, &core.memory)) {}
     state.displayErr(core);
 }
 fn tic_tick(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
+    if (memory != state.fn_data.mem) {
+        tic.tracef(state.fn_data.api, state.fn_data.mem, "Different!: {*} {*}", .{ memory, state.fn_data.mem });
+    }
     if (state.err == null) {
         state.callCallBack("TIC");
     }
-    while (state.running and !tryRun(core.api, &core.memory)) {}
+    while (state.running and !tryRun(&core.api, &core.memory)) {}
     state.displayErr(core);
 }
-fn tic_blit(memory: *TicMem, row: i32, data: tic_core.UserData) callconv(.c) void {
-    _ = .{ memory, row, data };
+fn tic_nothing(_: *TicMem, _: i32, _: tic_core.UserData) callconv(.c) void {}
+fn tic_bdr(_: *TicMem, row: i32, _: tic_core.UserData) callconv(.c) void {
+    const Value = lola.runtime.Value;
+    // tic.tracef(state.fn_data.api, state.fn_data.mem, "has BDR: {}", .{state.has_bdr});
+    if (!state.has_bdr) return;
+    if (state.err == null) {
+        const args = [1]Value{Value.initInteger(i32, row)};
+        state.vm.callLolaFunction(
+            &state.env,
+            "BDR",
+            &args,
+            null,
+        ) catch |err| switch (err) {
+            error.FunctionNotFound => {
+                state.has_bdr = false;
+                return;
+            },
+            else => {
+                state.err = err;
+                state.running = false;
+                return;
+            },
+        };
+        state.running = true;
+        while (state.running and !tryRun(state.fn_data.api, state.fn_data.mem)) {}
+    }
+}
+
+fn tic_menu(_: *TicMem, index: i32, _: tic_core.UserData) callconv(.c) void {
+    const Value = lola.runtime.Value;
+    if (!state.has_menu) return;
+    if (state.err == null) {
+        const args = [1]Value{Value.initInteger(i32, index)};
+        state.vm.callLolaFunction(
+            &state.env,
+            "MENU",
+            &args,
+            null,
+        ) catch |err| switch (err) {
+            error.FunctionNotFound => {
+                state.has_menu = false;
+                return;
+            },
+            else => {
+                state.err = err;
+                state.running = false;
+                return;
+            },
+        };
+        state.running = true;
+        while (state.running and !tryRun(state.fn_data.api, state.fn_data.mem)) {}
+    }
 }
 fn tic_get_outline(code: [*:0]const u8, size: *i32) callconv(.c) ?*const tic_core.TicOutlineItem {
     // const Static = struct {
@@ -342,15 +323,56 @@ const trace_writer = struct {
         };
     }
 };
-//TODO call callback remap(tile,x,y) -> [tile,flip,rotate]
-// fn remapFunc(data: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
-//     if (state.err == null) {
-//         // state.callCallBack("remap");
-//     }
-// }
+//call callback remap(tile,x,y) -> [tile,flip,rotate]
+fn remapFunc(_: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
+    const Value = lola.runtime.Value;
+    const static = struct {
+        var needs_running = false;
+        var remap_result: *tic_core.RemapeResult = undefined;
+        fn returnedCb(_: ?*anyopaque, return_value: Value) anyerror!void {
+            var owned = return_value;
+            defer owned.deinit();
+            needs_running = false;
+            switch (return_value) {
+                .array => |array| {
+                    if (array.contents.len != 3) return error.InvalidArgs;
+                    remap_result.index = try array.contents[0].toInteger(u8);
+                    remap_result.flip = std.meta.intToEnum(tic_core.TicFlip, try array.contents[1].toInteger(c_int)) catch return error.InvalidArgs;
+                    remap_result.rotate = std.meta.intToEnum(tic_core.TicRotate, try array.contents[1].toInteger(c_int)) catch return error.InvalidArgs;
+                },
+                .number => {
+                    remap_result.index = try return_value.toInteger(u8);
+                },
+                else => return error.InvalidArgs,
+            }
+        }
+    };
+    if (state.err == null) {
+        static.remap_result = result;
+        const args = [2]Value{ Value.initInteger(i32, x), Value.initInteger(i32, y) };
+        state.vm.callLolaFunction(
+            &state.env,
+            "remap",
+            &args,
+            .{ .callback = static.returnedCb, .callback_data = null },
+        ) catch |err| switch (err) {
+            error.FunctionNotFound => {
+                state.fn_data.remap_func = null;
+                return;
+            },
+            else => {
+                state.err = err;
+                state.running = false;
+                return;
+            },
+        };
+        static.needs_running = true;
+        while (state.running and static.needs_running and !tryRun(state.fn_data.api, state.fn_data.mem)) {}
+    }
+}
 
 /// returns true if it should continue to be ran
-fn run(api: tic_core.API, mem: *TicMem) !bool {
+fn run(api: *const tic_core.API, mem: *TicMem) !bool {
     const limit: ?u32 = 100;
 
     const result = state.vm.execute(limit) catch |err| {
@@ -392,12 +414,12 @@ fn compile(core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     defer diag.deinit();
     state.compile_unit = lola.compiler.compile(state.alloc, &diag, chunk_name, src_slice) catch |e| {
         for (diag.messages.items) |message| {
-            tic.tracef(core.api, &core.memory, "compiler: {f}", .{message});
+            tic.tracef(&core.api, &core.memory, "compiler: {f}", .{message});
         }
         return e;
     } orelse {
         for (diag.messages.items) |message| {
-            tic.tracef(core.api, &core.memory, "compiler: {f}", .{message});
+            tic.tracef(&core.api, &core.memory, "compiler: {f}", .{message});
         }
         return error.DidNotCompile;
     };
@@ -427,8 +449,29 @@ fn compile(core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     try state.installWrapped("key", 0, .{0xff});
     try state.installWrapped("keyp", 0, .{ 0xff, -1, -1 });
     try state.installWrapped("line", 5, .{});
-    //TODO the rest. refer to `tic_core.api`
-    // core.api.
+    try state.installWrapped("memcpy", 3, .{});
+    try state.installWrapped("memset", 3, .{});
+    try state.installWrapped("mget", 2, .{});
+    try state.installWrapped("mset", 3, .{});
+    try state.installWrapped("music", 0, .{ -1, -1, -1, true, false, -1, -1 });
+    try state.installWrapped("paint", 3, .{255});
+    try state.installWrapped("peek", 1, .{8});
+    try state.installWrapped("peek1", 1, .{});
+    try state.installWrapped("peek2", 1, .{});
+    try state.installWrapped("peek4", 1, .{});
+    try state.installWrapped("poke", 2, .{8});
+    try state.installWrapped("poke1", 2, .{});
+    try state.installWrapped("poke2", 2, .{});
+    try state.installWrapped("poke4", 2, .{});
+    try state.installWrapped("rect", 5, .{});
+    try state.installWrapped("rectb", 5, .{});
+    try state.installWrapped("reset", 0, .{});
+    try state.installWrapped("sync", 0, .{ 0, 0, false });
+    try state.installWrapped("time", 0, .{});
+    try state.installWrapped("trace", 1, .{15});
+    try state.installWrapped("tri", 7, .{});
+    try state.installWrapped("trib", 7, .{});
+    try state.installWrapped("tstamp", 0, .{});
 
     // lola.libs.std
     // if (opts.array)

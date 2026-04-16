@@ -14,7 +14,7 @@
 
 const std = @import("std");
 const tic_core = @import("tic.zig");
-const API = tic_core.API;
+const API = *const tic_core.API;
 comptime {
     std.testing.refAllDecls(@This());
 }

@@ -15,7 +15,7 @@ pub const FnData = struct {
     mem: *TicMem,
     api: *const tic_core.API,
     alloc: std.mem.Allocator,
-    remap_func: tic_core.RemapFunc,
+    remap_func: ?tic_core.RemapFunc,
     remap_data: ?*anyopaque,
 };
 fn convertToZigValue(comptime Target: type, value: Value) !Target {
@@ -91,9 +91,6 @@ fn convertToLoLaValue(allocator: std.mem.Allocator, value: anytype) !Value {
         else => @compileError(@typeName(T) ++ " is not a wrappable type!"),
     };
 }
-//TODO:
-//if param is a multi-item pointer and next param is int, then use a lola array
-//treat [*:0] as string
 //automatically wrap tic_core.API functions
 pub fn wrap(
     comptime function_name: []const u8,
@@ -135,7 +132,7 @@ pub fn wrap(
                             if (ptr.sentinel_ptr) |_| {
                                 if (ptr.child != u8) @compileError("Unsupported sentinal");
                                 len += 1;
-                            } else if (ArgsTuple.len > i + 1 and @typeInfo(ArgsTuple[i + 1]) == .int) {
+                            } else if (info.@"fn".params.len > i + 1 and @typeInfo(info.@"fn".params[i + 1].type.?) == .int) {
                                 len += 1;
                                 skip = true;
                             } else @compileError("can't wrap type " ++ @typeName(arg));
@@ -169,7 +166,7 @@ pub fn wrap(
                             if (ptr.child != u8) @compileError("Unsupported sentinal");
                             free_list[index] = ?[]u8;
                             index += 1;
-                        } else if (ArgsTuple.len > i + 1 and @typeInfo(ArgsTuple[i + 1]) == .int) {
+                        } else if (info.@"fn".params.len > i + 1 and @typeInfo(info.@"fn".params[i + 1].type.?) == .int) {
                             if (ptr.child != u8) @compileError("Only arrays of u8 are supported but array is " ++ @typeName(arg));
                             free_list[index] = ?[]ptr.child;
                             index += 1;
@@ -244,15 +241,15 @@ pub fn wrap(
                                     free_list[index_free_map[i]] = c_str;
                                     api_args[i] = c_str;
                                     arg_index += 1;
-                                } else if (ArgsTuple.len > i + 1 and @typeInfo(ArgsTuple[i + 1]) == .int) {
+                                } else if (info.@"fn".params.len > i + 1 and @typeInfo(info.@"fn".params[i + 1].type.?) == .int) {
                                     if (args.len <= arg_index + 1) return error.InvalidArgs;
                                     const array = array: switch (args[arg_index]) {
                                         .array => |array| {
                                             const lola_array = array.contents;
-                                            const array_buf = try data.alloc.alloc(ptr.child, lola_array.contents.len);
+                                            const array_buf = try data.alloc.alloc(ptr.child, lola_array.len);
                                             free_list[index_free_map[i]] = array_buf;
 
-                                            for (lola_array.contents, array_buf) |value, *zig_value| {
+                                            for (lola_array, array_buf) |value, *zig_value| {
                                                 zig_value.* = try convertToZigValue(ptr.child, value);
                                             }
                                             break :array array_buf;
@@ -262,12 +259,12 @@ pub fn wrap(
                                             if (args[arg_index] == .number and args[arg_index].number == -1) break :array &.{};
                                             const zig_value = try args[arg_index].toInteger(ptr.child);
 
-                                            Static.satic = zig_value;
-                                            break :array &Static.satic[0..1];
+                                            Static.single_item = zig_value;
+                                            break :array (&Static.single_item)[0..1];
                                         },
                                     };
-                                    api_args[i] = array;
-                                    api_args[i + 1] = array.len;
+                                    api_args[i] = array.ptr;
+                                    api_args[i + 1] = @intCast(array.len);
                                     skip = true;
                                     arg_index += 1;
                                 } else unreachable;

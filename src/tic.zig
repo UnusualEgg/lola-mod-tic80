@@ -39,9 +39,15 @@ const TicSample = extern struct {
         _1: u8,
         _2: u8,
     },
-    data2: extern struct {
-        _1: u8,
-        _2: u8,
+    data2: packed struct(u16) {
+        octave: u3,
+        pitch16x: u1,
+        speed: i3,
+        reverse: u1,
+        note: u4,
+        stereo_left: u1,
+        stereo_right: u1,
+        temp: u2,
     },
     loops: [4]u8,
 };
@@ -100,7 +106,82 @@ const Cartridge = extern struct {
     binary: TicBinary,
     lang: u8,
 };
-const TicRam = extern struct { data: [0x18000]u8 };
+const Tic80Mouse = extern struct {
+    x: u8,
+    y: u8,
+    buttons: packed union {
+        raw: u16,
+        buttons: packed struct {
+            left: u1,
+            middle: u1,
+            right: u1,
+            hscroll: i6,
+            vscroll: i6,
+            relative: u1,
+        },
+    },
+};
+const Tic80Input = extern struct {
+    gamepads: Tic80Gamepads,
+    mouse: Tic80Mouse,
+    keybaord: Tic80Keyboard,
+};
+const TicMusicState = extern struct {
+    music: extern struct {
+        track: i8,
+        frame: i8,
+        row: i8,
+    },
+    flag: packed struct {
+        music_loop: u1,
+        music_status: u2,
+        music_sustain: u1,
+        unknown: u4,
+    },
+};
+const TicPersistent = extern struct { data: [1024 / @sizeOf(u32)]u32 };
+const TicFontData = extern struct {
+    data: [1016]u8,
+    params: packed struct {
+        width: u8,
+        height: u8,
+        extra: u48,
+    },
+};
+const TicFont = extern struct {
+    regular: TicFontData,
+    alternate: TicFontData,
+};
+const TicMapping = extern struct { data: [32]u8 };
+const TicRam = extern struct {
+    vram: TicVram,
+    tiles: TicTiles,
+    sprites: TicSprites,
+    map: TicMap,
+    input: Tic80Input,
+    sfx_pos: [4]TicSfxPos,
+    registers: [4]TicSoundRegister,
+    sfx: TicSfx,
+    music: TicMusic,
+    music_state: TicMusicState,
+    stereo: TicSteroVolume,
+    persistent: TicPersistent,
+    flags: TicFlags,
+    font: TicFont,
+    mapping: TicMapping,
+    pcm: TicPcm,
+    free: u8,
+    _: [12624]u8,
+};
+comptime {
+    const std = @import("std");
+    const expected = ((16 * 1024) + 80 * 1024);
+    if (@sizeOf(TicRam) != expected)
+        @compileError(std.fmt.comptimePrint(
+            "expected size {} but got {}",
+            .{ expected, @sizeOf(TicRam) },
+        ));
+}
 pub const TicMem = extern struct {
     product: Tic80,
     ram: *TicRam,
@@ -177,7 +258,7 @@ const TicCommandData = extern struct {
         ticks: i32,
     },
 };
-const TicSfxPos = extern struct { data: [4]i8 };
+const TicSfxPos = extern struct { wave: i8, volume: i8, chord: i8, pitch: i8 };
 const TicJumpCommand = extern struct {
     active: bool,
     frame: i32,
@@ -186,7 +267,10 @@ const TicJumpCommand = extern struct {
 const TicVram = extern struct { data: [0x4000]u8 };
 const TicSoundRegister = extern struct {
     freq_low: u8,
-    freq_high_volume: u8,
+    byte_two: packed struct {
+        freq_high: u4,
+        volume: u4,
+    },
     waveform: TicWaveForm,
 };
 const TicCoreStateData = extern struct {
@@ -329,7 +413,7 @@ pub const API = extern struct {
     btn: *const fn (*TicMem, i32) callconv(.c) u32,
     btnp: *const fn (*TicMem, i32, i32, i32) callconv(.c) u32,
     sfx: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, i32, i32) callconv(.c) void,
-    map: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, [*]const u8, u8, i32, RemapFunc, ?*anyopaque) callconv(.c) void,
+    map: *const fn (*TicMem, i32, i32, i32, i32, i32, i32, [*]const u8, u8, i32, ?RemapFunc, ?*anyopaque) callconv(.c) void,
     mget: *const fn (*TicMem, i32, i32) callconv(.c) u8,
     mset: *const fn (*TicMem, i32, i32, u8) callconv(.c) void,
     peek: *const fn (*TicMem, i32, i32) callconv(.c) u8,
