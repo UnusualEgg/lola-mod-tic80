@@ -106,9 +106,6 @@ fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
         .remap_data = null,
     };
 
-    core.data.trace(core.data.data, "Hello from lola!", 15);
-    core.api.trace(memory, "Hello from api :3", 15);
-
     state.compile(core, "cart.lola", code) catch |e| {
         core.api.trace(memory, @errorName(e), 15);
         state.err = e;
