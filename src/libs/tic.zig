@@ -85,6 +85,9 @@ const api = struct {
         const scale = try maybeArg(args, 7, i32, 1);
 
         data.api.map(data.mem, x, y, w, h, sx, sy, trans_colors.ptr, @intCast(trans_colors.len), scale, data.remap_func, data.remap_data);
+        if (data.err) |err| {
+            return err;
+        }
         return .void;
     }
 

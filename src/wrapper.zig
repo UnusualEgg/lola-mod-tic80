@@ -17,6 +17,7 @@ pub const FnData = struct {
     alloc: std.mem.Allocator,
     remap_func: ?tic_core.RemapFunc,
     remap_data: ?*anyopaque,
+    err: ?anyerror = null,
 };
 fn convertToZigValue(comptime Target: type, value: Value) !Target {
     if (Target == Value) {
