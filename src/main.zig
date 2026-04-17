@@ -93,7 +93,9 @@ const demo: tic_core.TicDemo = .{
 
 fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
     tic_close(memory);
-    const core: *TicCore = @ptrCast(memory);
+    // const core: *TicCore = @fieldParentPtr("memory", memory);
+    const core: *TicCore = @ptrFromInt(@intFromPtr(memory));
+    std.debug.assert(@intFromPtr(memory) == @intFromPtr(core));
 
     //initialize api and memory pointers
     time_func = core.api.time;
@@ -109,6 +111,7 @@ fn tic_init(memory: *TicMem, code: [*:0]const u8) callconv(.c) bool {
     state.compile(core, "cart.lola", code) catch |e| {
         core.api.trace(memory, @errorName(e), 15);
         state.err = e;
+        return false;
     };
     return true;
 }
@@ -198,16 +201,21 @@ const Value = lola.runtime.Value;
 fn remapFunc(_: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
     if (state.err == null and state.has_remap) {
         const args = [2]Value{ Value.initInteger(i32, x), Value.initInteger(i32, y) };
+        std.log.debug("calling remap", .{});
         if (state.callLolaFunction("remap", &args)) |return_value| {
             processRemapResult(result, return_value) catch |e| {
                 state.setErr(e);
+                std.log.debug("got error :< {s}", .{@errorName(e)});
             };
         } else |e| {
             switch (e) {
                 error.FunctionNotFound => {
                     state.has_remap = false;
+                    std.log.debug("no remap found :<", .{});
                 },
-                error.VmError => {},
+                error.VmError => {
+                    std.log.debug("got vmerror", .{});
+                },
             }
         }
     }

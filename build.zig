@@ -33,6 +33,7 @@ pub fn build(b: *std.Build) !void {
 
     const compress_step = b.step("compress", "compress lola.tic (default new cart)");
     const run_step = b.addRunArtifact(compress);
+    run_step.addFileInput(b.path("lola.tic"));
     compress_step.dependOn(&run_step.step);
 
     exe.step.dependOn(compress_step);

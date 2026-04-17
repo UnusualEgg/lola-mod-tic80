@@ -137,7 +137,7 @@ fn printDiagnotics(self: *Self, core: *TicCore, diag: *const lola.compiler.Diagn
     const len = alloc_writer.written().len;
     try alloc_writer.writer.writeByte(0);
     const str = alloc_writer.written()[0..len :0];
-    core.data.@"error"(core.data, str);
+    core.data.@"error"(core.data.data, str);
 }
 pub fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]const u8) !void {
     const src_slice = std.mem.span(src);

@@ -202,7 +202,7 @@ const TicTickData = extern struct {
     start: u64,
 
     data: Data,
-    const Data = ?*anyopaque;
+    const Data = *opaque {};
 };
 const Tic80Gamepad = u8;
 const Tic80Gamepads = u32;
