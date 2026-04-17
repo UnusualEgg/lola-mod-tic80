@@ -192,7 +192,7 @@ pub const TicMem = extern struct {
 };
 // const TicMem = opaque {};
 const TicBlip = opaque {};
-const TicTickData = extern struct {
+pub const TicTickData = extern struct {
     trace: *const fn (Data, [*:0]const u8, color: u8) callconv(.c) void,
     @"error": *const fn (Data, [*:0]const u8) callconv(.c) void,
     exit: *const fn (Data) callconv(.c) void,
@@ -202,7 +202,7 @@ const TicTickData = extern struct {
     start: u64,
 
     data: Data,
-    const Data = *opaque {};
+    pub const Data = *opaque {};
 };
 const Tic80Gamepad = u8;
 const Tic80Gamepads = u32;
