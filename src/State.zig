@@ -47,7 +47,7 @@ pub fn callCallBack(self: *Self, name: []const u8) void {
         owned.deinit();
     } else |e| {
         switch (e) {
-            error.FunctionNotFound => {
+            error.LolaFunctionNotFound => {
                 return;
             },
             else => {
@@ -60,12 +60,31 @@ pub fn callCallBack(self: *Self, name: []const u8) void {
 pub fn displayErr(self: *Self, core: *TicCore) void {
     if (!self.have_displayed_err) {
         if (self.err) |err| {
-            tic.tracef(&core.api, &core.memory, "error: {s}", .{@errorName(err)});
+            self.printStackTrace() catch {
+                self.errorMessage("Unable to print stack trace!");
+            };
+            self.errorMessage(@errorName(err));
             tic.exit(&core.api, &core.memory);
             self.have_displayed_err = true;
         }
-        self.have_displayed_err = true;
     }
+}
+fn getCore(self: *Self) *TicCore {
+    return @fieldParentPtr("memory", self.fn_data.mem);
+}
+pub fn errorMessage(self: *Self, message: [*:0]const u8) void {
+    const core: *TicCore = self.getCore();
+    core.data.@"error"(core.data.data, message);
+}
+fn printErrorMessage(self: *Self, comptime fmt: []const u8, args: anytype) void {
+    const alloc = self.alloc;
+    const message: [:0]u8 = std.fmt.allocPrintSentinel(alloc, fmt, args, 0) catch {
+        self.err = error.OutOfMemory;
+        self.errorMessage("Out of memory!");
+        return;
+    };
+    defer alloc.free(message);
+    self.errorMessage(message.ptr);
 }
 fn installWrapped(self: *Self, comptime name: []const u8, comptime required_params: usize, comptime default_values: anytype) !void {
     try self.env.installFunction(name, wrapper.wrap(name, &self.fn_data, required_params, default_values));
@@ -76,18 +95,31 @@ pub fn setErr(self: *Self, err: anyerror) void {
 pub fn callLolaFunction(self: *Self, function_name: []const u8, args: []const lola.runtime.Value) error{ FunctionNotFound, VmError }!lola.runtime.Value {
     return self.vm.callLolaFunction(&self.env, function_name, args) catch |err| {
         switch (err) {
-            error.FunctionNotFound => return error.FunctionNotFound,
+            error.LolaFunctionNotFound => return error.FunctionNotFound,
             else => {
                 self.err = err;
+                self.displayErr(self.getCore());
+                return error.VmError;
             },
         }
-        return .void;
     };
 }
 
+fn printStackTrace(self: *Self) !void {
+    self.errorMessage("Panic during execution!");
+    self.errorMessage("Call stack:");
+    const alloc = self.alloc;
+    var alloc_writer = std.Io.Writer.Allocating.init(alloc);
+    defer alloc_writer.deinit();
+    try self.vm.printStackTrace(&alloc_writer.writer);
+    try alloc_writer.writer.writeByte(0);
+    const message = alloc_writer.written();
+    self.errorMessage(message[0 .. message.len - 1 :0]);
+}
+
 /// returns true if it should keep being ran
-pub fn tryRun(self: *Self, api: *const tic_core.API, memory: *TicMem) bool {
-    if (self.run(api, memory)) |result| {
+pub fn tryRun(self: *Self) bool {
+    if (self.run()) |result| {
         return result;
     } else |err| {
         if (err != error.Completed) {
@@ -98,20 +130,12 @@ pub fn tryRun(self: *Self, api: *const tic_core.API, memory: *TicMem) bool {
 }
 
 /// returns true if it should continue to be ran
-fn run(self: *Self, api: *const tic_core.API, mem: *TicMem) !bool {
+fn run(self: *Self) !bool {
     const limit: ?u32 = 100;
 
     const result = self.vm.execute(limit) catch |err| {
-        tic.tracef(api, mem, "Panic during execution: {s}", .{@errorName(err)});
-        tic.trace(api, mem, "Call stack:");
-        const alloc = self.alloc;
-        var alloc_writer = std.Io.Writer.Allocating.init(alloc);
-        defer alloc_writer.deinit();
-        self.vm.printStackTrace(&alloc_writer.writer) catch {
-            tic.trace(api, mem, "can't print stack trace");
-        };
-        tic.tracef(api, mem, "{s}", .{alloc_writer.written()});
-        return error.VMError;
+        try self.printStackTrace();
+        return err;
     };
 
     self.pool.clearUsageCounters();

@@ -129,7 +129,7 @@ fn tic_close(memory: *TicMem) callconv(.c) void {
 fn tic_boot(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
     //run global scope then run BOOT
-    while (state.tryRun(&core.api, &core.memory)) {}
+    while (state.tryRun()) {}
     if (state.err == null) {
         state.callCallBack("BOOT");
     }
@@ -201,20 +201,17 @@ const Value = lola.runtime.Value;
 fn remapFunc(_: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
     if (state.err == null and state.has_remap) {
         const args = [2]Value{ Value.initInteger(i32, x), Value.initInteger(i32, y) };
-        std.log.debug("calling remap", .{});
         if (state.callLolaFunction("remap", &args)) |return_value| {
             processRemapResult(result, return_value) catch |e| {
                 state.setErr(e);
-                std.log.debug("got error :< {s}", .{@errorName(e)});
             };
         } else |e| {
             switch (e) {
                 error.FunctionNotFound => {
                     state.has_remap = false;
-                    std.log.debug("no remap found :<", .{});
                 },
                 error.VmError => {
-                    std.log.debug("got vmerror", .{});
+                    state.fn_data.err = state.err;
                 },
             }
         }
@@ -223,17 +220,30 @@ fn remapFunc(_: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) cal
 fn processRemapResult(result: *tic_core.RemapeResult, return_value: Value) !void {
     var owned = return_value;
     defer owned.deinit();
+    const invalid_return_message = "expected remap to return [tile, flip, rotate] or tile";
     switch (return_value) {
         .array => |array| {
-            if (array.contents.len != 3) return error.InvalidArgs;
+            if (array.contents.len != 3) {
+                state.errorMessage(invalid_return_message);
+                return error.InvalidRemapReturn;
+            }
             result.index = try array.contents[0].toInteger(u8);
-            result.flip = std.meta.intToEnum(tic_core.TicFlip, try array.contents[1].toInteger(c_int)) catch return error.InvalidArgs;
-            result.rotate = std.meta.intToEnum(tic_core.TicRotate, try array.contents[1].toInteger(c_int)) catch return error.InvalidArgs;
+            result.flip = std.meta.intToEnum(tic_core.TicFlip, try array.contents[1].toInteger(c_int)) catch {
+                state.errorMessage(invalid_return_message);
+                return error.InvalidArgs;
+            };
+            result.rotate = std.meta.intToEnum(tic_core.TicRotate, try array.contents[1].toInteger(c_int)) catch {
+                state.errorMessage(invalid_return_message);
+                return error.InvalidArgs;
+            };
         },
         .number => {
             result.index = try return_value.toInteger(u8);
         },
-        else => return error.InvalidArgs,
+        else => {
+            state.errorMessage(invalid_return_message);
+            return error.InvalidRemapReturn;
+        },
     }
 }
 
