@@ -193,7 +193,7 @@ const Value = lola.runtime.Value;
 //call callback remap(tile,x,y) -> [tile,flip,rotate]
 fn remapFunc(_: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
     if (state.err == null and state.has_remap) {
-        const args = [2]Value{ Value.initInteger(i32, x), Value.initInteger(i32, y) };
+        const args = [3]Value{ Value.initInteger(u8, result.index), Value.initInteger(i32, x), Value.initInteger(i32, y) };
         if (state.callLolaFunction("remap", &args)) |return_value| {
             processRemapResult(result, return_value) catch |e| {
                 state.setErr(e);
