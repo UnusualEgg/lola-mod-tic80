@@ -223,11 +223,11 @@ fn processRemapResult(result: *tic_core.RemapeResult, return_value: Value) !void
             result.index = try array.contents[0].toInteger(u8);
             result.flip = std.meta.intToEnum(tic_core.TicFlip, try array.contents[1].toInteger(c_int)) catch {
                 state.errorMessage(invalid_return_message);
-                return error.InvalidArgs;
+                return error.InvalidFlip;
             };
             result.rotate = std.meta.intToEnum(tic_core.TicRotate, try array.contents[2].toInteger(c_int)) catch {
                 state.errorMessage(invalid_return_message);
-                return error.InvalidArgs;
+                return error.InvalidRotate;
             };
         },
         .number => {
