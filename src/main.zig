@@ -144,11 +144,9 @@ fn tic_tick(memory: *TicMem) callconv(.c) void {
 }
 fn tic_nothing(_: *TicMem, _: i32, _: tic_core.UserData) callconv(.c) void {}
 fn tic_bdr(_: *TicMem, row: i32, _: tic_core.UserData) callconv(.c) void {
-    // tic.tracef(state.fn_data.api, state.fn_data.mem, "has BDR: {}", .{state.has_bdr});
     if (!state.has_bdr or state.err != null) return;
     const args = [1]Value{Value.initInteger(i32, row)};
-    var ret = state.vm.callLolaFunction(
-        &state.env,
+    var ret = state.callLolaFunction(
         "BDR",
         &args,
     ) catch |err| switch (err) {
@@ -157,7 +155,6 @@ fn tic_bdr(_: *TicMem, row: i32, _: tic_core.UserData) callconv(.c) void {
             return;
         },
         else => {
-            state.err = err;
             return;
         },
     };
@@ -167,8 +164,7 @@ fn tic_bdr(_: *TicMem, row: i32, _: tic_core.UserData) callconv(.c) void {
 fn tic_menu(_: *TicMem, index: i32, _: tic_core.UserData) callconv(.c) void {
     if (!state.has_menu or state.err != null) return;
     const args = [1]Value{Value.initInteger(i32, index)};
-    var ret = state.vm.callLolaFunction(
-        &state.env,
+    var ret = state.callLolaFunction(
         "MENU",
         &args,
     ) catch |err| switch (err) {
@@ -176,10 +172,7 @@ fn tic_menu(_: *TicMem, index: i32, _: tic_core.UserData) callconv(.c) void {
             state.has_menu = false;
             return;
         },
-        else => {
-            state.err = err;
-            return;
-        },
+        else => return,
     };
     ret.deinit();
 }
