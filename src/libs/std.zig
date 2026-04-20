@@ -45,46 +45,6 @@ test "stdlib.install" {
     try env.installModule(@This(), lola.runtime.Context.null_pointer);
 }
 
-pub fn Yield(env: *lola.runtime.Environment, call_context: lola.runtime.Context, args: []const lola.runtime.value.Value) anyerror!lola.runtime.AsyncFunctionCall {
-    _ = call_context;
-
-    if (args.len != 0)
-        return error.InvalidArgs;
-
-    const Context = struct {
-        allocator: std.mem.Allocator,
-        end: bool,
-    };
-
-    const ptr = try env.allocator.create(Context);
-    ptr.* = Context{
-        .allocator = env.allocator,
-        .end = false,
-    };
-
-    return lola.runtime.AsyncFunctionCall{
-        .context = lola.runtime.Context.make(*Context, ptr),
-        .destructor = struct {
-            fn dtor(exec_context: lola.runtime.Context) void {
-                const ctx = exec_context.cast(*Context);
-                ctx.allocator.destroy(ctx);
-            }
-        }.dtor,
-        .execute = struct {
-            fn execute(exec_context: lola.runtime.Context) anyerror!?lola.runtime.value.Value {
-                const ctx = exec_context.cast(*Context);
-
-                if (ctx.end) {
-                    return .void;
-                } else {
-                    ctx.end = true;
-                    return null;
-                }
-            }
-        }.execute,
-    };
-}
-
 pub fn Length(env: *const lola.runtime.Environment, context: lola.runtime.Context, args: []const lola.runtime.value.Value) !lola.runtime.value.Value {
     _ = env;
     _ = context;
