@@ -225,7 +225,7 @@ fn processRemapResult(result: *tic_core.RemapeResult, return_value: Value) !void
                 state.errorMessage(invalid_return_message);
                 return error.InvalidArgs;
             };
-            result.rotate = std.meta.intToEnum(tic_core.TicRotate, try array.contents[1].toInteger(c_int)) catch {
+            result.rotate = std.meta.intToEnum(tic_core.TicRotate, try array.contents[2].toInteger(c_int)) catch {
                 state.errorMessage(invalid_return_message);
                 return error.InvalidArgs;
             };
