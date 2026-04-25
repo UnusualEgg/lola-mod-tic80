@@ -1,5 +1,5 @@
 pub const TicOutlineItem = extern struct {
-    pos: *const u8,
+    pos: [*]const u8,
     size: i32,
 };
 const TIC80_SampleType = i16;
@@ -505,7 +505,7 @@ pub const TicScript = extern struct {
         blit: TicBlitCallBack,
     },
 
-    get_outline: *const fn (code: [*:0]const u8, size: *i32) callconv(.c) ?*const TicOutlineItem,
+    get_outline: *const fn (code: [*:0]const u8, size: *i32) callconv(.c) ?[*]const TicOutlineItem,
     eval: *const fn (tic: *TicMem, code: [*:0]const u8) callconv(.c) void,
 
     block_comment_start: ?[*:0]const u8,
@@ -521,7 +521,7 @@ pub const TicScript = extern struct {
     keywords: [*]const [*:0]const u8,
     keywords_count: i32,
 
-    lang_isalnum: *const fn (c: c_char) callconv(.c) bool,
+    lang_isalnum: *const fn (c: u8) callconv(.c) bool,
     use_structured_edition: bool,
     use_binary_section: bool,
 

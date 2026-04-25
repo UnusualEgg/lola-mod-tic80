@@ -123,6 +123,7 @@ fn tic_close(memory: *TicMem) callconv(.c) void {
         state.pool.deinit();
         state.compile_unit.deinit();
     }
+    static_items.clearAndFree(std.heap.smp_allocator);
     state = .{};
 }
 
@@ -176,17 +177,54 @@ fn tic_menu(_: *TicMem, index: i32, _: tic_core.UserData) callconv(.c) void {
     };
     ret.deinit();
 }
-fn tic_get_outline(code: [*:0]const u8, size: *i32) callconv(.c) ?*const tic_core.TicOutlineItem {
-    _ = code;
+var static_items: std.ArrayList(tic_core.TicOutlineItem) = .empty;
+fn tic_get_outline(code: [*:0]const u8, size: *i32) callconv(.c) ?[*]const tic_core.TicOutlineItem {
+    const items = &static_items;
+
+    const alloc = std.heap.smp_allocator;
+    items.clearAndFree(alloc);
     size.* = 0;
-    return null;
+    if (code[0] == 0) {
+        std.debug.print("oh it handed over empty code!\n", .{});
+    }
+
+    const slice: [:0]const u8 = std.mem.span(code);
+
+    var index: usize = 0;
+
+    const function = "function ";
+    while (std.mem.indexOfPos(u8, slice, index, function)) |func_index| {
+        var ptr = func_index + function.len;
+        const func_start = ptr;
+        var func_end: ?usize = null;
+        while (slice[ptr] != 0) : (ptr += 1) {
+            const c = slice[ptr];
+            if (tic_isalnum(c)) {} else if (c == '(' or std.ascii.isWhitespace(c)) {
+                func_end = ptr;
+                break;
+            } else break;
+        }
+        if (func_end) |end| {
+            const outline = slice[func_start..end];
+            items.append(alloc, .{ .pos = outline.ptr, .size = @intCast(outline.len) }) catch {
+                items.clearAndFree(alloc);
+                size.* = 0;
+                return null;
+            };
+            size.* += 1;
+        }
+        index = ptr;
+        if (index >= slice.len) break;
+    }
+
+    return items.items.ptr;
 }
 fn tic_eval(mem: *TicMem, code: [*:0]const u8) callconv(.c) void {
     _ = tic_init(mem, code);
 }
 
-fn tic_isalnum(c: c_char) callconv(.c) bool {
-    return std.ascii.isAlphanumeric(@intCast(c));
+fn tic_isalnum(c: u8) callconv(.c) bool {
+    return std.ascii.isAlphanumeric(@intCast(c)) or c == '_';
 }
 
 const Value = lola.runtime.Value;
@@ -243,19 +281,8 @@ fn processRemapResult(result: *tic_core.RemapeResult, return_value: Value) !void
 //logging
 pub const std_options: std.Options = .{
     // Set the log level to info
-    .log_level = .debug,
+    .log_level = .err,
 
     // Define logFn to override the std implementation
-    .logFn = myLogFn,
+    // .logFn = myLogFn,
 };
-
-pub fn myLogFn(
-    comptime message_level: std.log.Level,
-    comptime scope: @Type(.enum_literal),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const level_txt = comptime message_level.asText();
-    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-    tic.tracef(state.fn_data.api, state.fn_data.mem, level_txt ++ prefix2 ++ format, args);
-}
