@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) !void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("compress.zig"),
             .target = native,
+            .optimize = .ReleaseSafe,
             .link_libc = true,
         }),
     });
