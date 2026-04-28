@@ -130,10 +130,24 @@ fn tic_close(memory: *TicMem) callconv(.c) void {
 fn tic_boot(memory: *TicMem) callconv(.c) void {
     const core: *TicCore = @ptrCast(memory);
     //run global scope then run BOOT
-    while (state.tryRun()) {}
-    if (state.err == null) {
-        state.callCallBack("BOOT");
+    var vm = lola.runtime.vm.VM.init(state.alloc, &state.env) catch |e| {
+        state.err = e;
+        return;
+    };
+    const result = vm.execute(null) catch |e| {
+        state.err = e;
+        return;
+    };
+    switch (result) {
+        .completed => |value| {
+            var owned = value;
+            owned.deinit();
+        },
+        .exhausted => unreachable,
+        .paused => unreachable,
     }
+    vm.deinit();
+    state.callCallBack("BOOT");
     state.displayErr(core);
 }
 fn tic_tick(memory: *TicMem) callconv(.c) void {
@@ -146,36 +160,65 @@ fn tic_tick(memory: *TicMem) callconv(.c) void {
 fn tic_nothing(_: *TicMem, _: i32, _: tic_core.UserData) callconv(.c) void {}
 fn tic_bdr(_: *TicMem, row: i32, _: tic_core.UserData) callconv(.c) void {
     if (!state.has_bdr or state.err != null) return;
+
     const args = [1]Value{Value.initInteger(i32, row)};
-    var ret = state.callLolaFunction(
-        "BDR",
-        &args,
-    ) catch |err| switch (err) {
-        error.FunctionNotFound => {
-            state.has_bdr = false;
+    if (state.env.getMethod("BDR")) |func| {
+        var vm = lola.runtime.VM.initFunctionCall(
+            state.alloc,
+            &state.env,
+            func.script,
+            &args,
+        ) catch |e| {
+            state.err = e;
             return;
-        },
-        else => {
+        };
+        defer vm.deinit();
+        const result = vm.execute(null) catch |e| {
+            state.err = e;
             return;
-        },
-    };
-    ret.deinit();
+        };
+        switch (result) {
+            .completed => |value| {
+                var owned = value;
+                owned.deinit();
+            },
+            .exhausted => unreachable,
+            .paused => unreachable,
+        }
+    } else {
+        state.has_bdr = false;
+    }
 }
 
 fn tic_menu(_: *TicMem, index: i32, _: tic_core.UserData) callconv(.c) void {
     if (!state.has_menu or state.err != null) return;
     const args = [1]Value{Value.initInteger(i32, index)};
-    var ret = state.callLolaFunction(
-        "MENU",
-        &args,
-    ) catch |err| switch (err) {
-        error.FunctionNotFound => {
-            state.has_menu = false;
+    if (state.env.getMethod("MENU")) |func| {
+        var vm = lola.runtime.VM.initFunctionCall(
+            state.alloc,
+            &state.env,
+            func.script,
+            &args,
+        ) catch |e| {
+            state.err = e;
             return;
-        },
-        else => return,
-    };
-    ret.deinit();
+        };
+        defer vm.deinit();
+        const result = vm.execute(null) catch |e| {
+            state.err = e;
+            return;
+        };
+        switch (result) {
+            .completed => |value| {
+                var owned = value;
+                owned.deinit();
+            },
+            .exhausted => unreachable,
+            .paused => unreachable,
+        }
+    } else {
+        state.has_menu = false;
+    }
 }
 var static_items: std.ArrayList(tic_core.TicOutlineItem) = .empty;
 fn tic_get_outline(code: [*:0]const u8, size: *i32) callconv(.c) ?[*]const tic_core.TicOutlineItem {
@@ -230,22 +273,34 @@ fn tic_isalnum(c: u8) callconv(.c) bool {
 const Value = lola.runtime.Value;
 //call callback remap(tile,x,y) -> [tile,flip,rotate]
 fn remapFunc(_: ?*anyopaque, x: i32, y: i32, result: *tic_core.RemapeResult) callconv(.c) void {
-    if (state.err == null and state.has_remap) {
-        const args = [3]Value{ Value.initInteger(u8, result.index), Value.initInteger(i32, x), Value.initInteger(i32, y) };
-        if (state.callLolaFunction("remap", &args)) |return_value| {
-            processRemapResult(result, return_value) catch |e| {
-                state.setErr(e);
-            };
-        } else |e| {
-            switch (e) {
-                error.FunctionNotFound => {
-                    state.has_remap = false;
-                },
-                error.VmError => {
-                    state.fn_data.err = state.err;
-                },
-            }
+    if (state.err != null or !state.has_remap) return;
+    const args = [3]Value{ Value.initInteger(u8, result.index), Value.initInteger(i32, x), Value.initInteger(i32, y) };
+    if (state.env.getMethod("remap")) |func| {
+        var vm = lola.runtime.VM.initFunctionCall(
+            state.alloc,
+            &state.env,
+            func.script,
+            &args,
+        ) catch |e| {
+            state.err = e;
+            return;
+        };
+        defer vm.deinit();
+        const exec_result = vm.execute(null) catch |e| {
+            state.err = e;
+            return;
+        };
+        switch (exec_result) {
+            .completed => |return_value| {
+                processRemapResult(result, return_value) catch |e| {
+                    state.setErr(e);
+                };
+            },
+            .exhausted => unreachable,
+            .paused => unreachable,
         }
+    } else {
+        state.has_remap = false;
     }
 }
 fn processRemapResult(result: *tic_core.RemapeResult, return_value: Value) !void {

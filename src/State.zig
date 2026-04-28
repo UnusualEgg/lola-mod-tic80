@@ -42,18 +42,28 @@ has_menu: bool = true,
 has_remap: bool = true,
 
 pub fn callCallBack(self: *Self, name: []const u8) void {
-    if (self.vm.callLolaFunction(&self.env, name, &.{})) |value| {
-        var owned = value;
-        owned.deinit();
-    } else |e| {
-        switch (e) {
-            error.LolaFunctionNotFound => {
-                return;
+    if (self.env.getMethod(name)) |func| {
+        var vm = lola.runtime.VM.initFunctionCall(
+            self.alloc,
+            &self.env,
+            func.script,
+            &.{},
+        ) catch |e| {
+            self.err = e;
+            return;
+        };
+        defer vm.deinit();
+        const result = vm.execute(null) catch |e| {
+            self.err = e;
+            return;
+        };
+        switch (result) {
+            .completed => |value| {
+                var owned = value;
+                owned.deinit();
             },
-            else => {
-                self.err = e;
-                return;
-            },
+            .exhausted => unreachable,
+            .paused => unreachable,
         }
     }
 }
@@ -229,6 +239,5 @@ pub fn compile(self: *Self, core: *TicCore, chunk_name: []const u8, src: [*:0]co
     // try self.env.installFunction("Floor", .initSimpleUser(libs.std.Floor));
     try self.env.installModule(libs.runtime, .null_pointer);
 
-    self.vm = try lola.runtime.vm.VM.init(self.alloc, &self.env);
     self.initialized = true;
 }
